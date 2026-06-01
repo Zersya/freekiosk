@@ -26,6 +26,11 @@ interface MediaFileInfo {
   size: number;
 }
 
+interface SavedJsonFile {
+  name: string;  // Final filename as saved
+  uri: string;   // Content URI of the saved file
+}
+
 interface FilePickerModuleType {
   /** Open file picker for single media selection */
   pickMedia(mediaType: 'video' | 'image' | 'any'): Promise<PickedFile>;
@@ -33,6 +38,8 @@ interface FilePickerModuleType {
   pickMultipleMedia(mediaType: 'video' | 'image' | 'any'): Promise<PickedFile[]>;
   /** Open file picker for JSON file selection (backup import). Uses SAF to bypass Scoped Storage. */
   pickJsonFile(): Promise<PickedJsonFile>;
+  /** Open "Save As" dialog for JSON export. Uses SAF to bypass Scoped Storage on Android 10+. */
+  saveJsonFile(content: string, filename: string): Promise<SavedJsonFile>;
   /** Delete a previously copied media file */
   deleteMediaFile(filePath: string): Promise<boolean>;
   /** Get the internal media directory path */
@@ -46,4 +53,4 @@ interface FilePickerModuleType {
 const FilePickerModule: FilePickerModuleType = NativeModules.FilePickerModule;
 
 export default FilePickerModule;
-export type { PickedFile, PickedJsonFile, MediaFileInfo };
+export type { PickedFile, PickedJsonFile, SavedJsonFile, MediaFileInfo };

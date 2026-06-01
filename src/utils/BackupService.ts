@@ -206,19 +206,13 @@ function generateBackupFilename(): string {
 }
 
 /**
- * Export current configuration to a backup file
+ * Collect all settings and build the backup JSON string without writing to disk.
+ * Used by the UI to get the content before passing it to SAF for writing.
  */
-export async function exportBackup(): Promise<{ success: boolean; filePath?: string; error?: string }> {
+export async function buildBackupJson(): Promise<{ success: boolean; json?: string; filename?: string; error?: string }> {
   try {
-    // Request permissions
-    const hasPermission = await requestStoragePermission();
-    if (!hasPermission) {
-      return { success: false, error: 'Storage permission denied' };
-    }
-
-    // Collect all settings
     const settings: Record<string, any> = {};
-    
+
     for (const key of BACKUP_KEYS) {
       try {
         const value = await AsyncStorage.getItem(key);
@@ -230,30 +224,22 @@ export async function exportBackup(): Promise<{ success: boolean; filePath?: str
       }
     }
 
-    // Get API key from secure storage (Keychain)
     try {
       const apiKey = await getSecureApiKey();
-      if (apiKey) {
-        settings['@kiosk_rest_api_key'] = apiKey;
-      }
+      if (apiKey) settings['@kiosk_rest_api_key'] = apiKey;
     } catch (e) {
       console.warn('Failed to read API key from secure storage:', e);
     }
 
-    // Get MQTT password from secure storage (Keychain)
     try {
       const mqttPassword = await getSecureMqttPassword();
-      if (mqttPassword) {
-        settings['@kiosk_mqtt_password'] = mqttPassword;
-      }
+      if (mqttPassword) settings['@kiosk_mqtt_password'] = mqttPassword;
     } catch (e) {
       console.warn('Failed to read MQTT password from secure storage:', e);
     }
 
-    // Check if PIN is configured (but don't export the PIN itself for security)
     const hasPinConfigured = await hasSecurePin();
 
-    // Create backup data
     const backupData: BackupData = {
       version: BACKUP_VERSION,
       exportDate: new Date().toISOString(),
@@ -262,21 +248,43 @@ export async function exportBackup(): Promise<{ success: boolean; filePath?: str
       hasPinConfigured,
     };
 
-    // Generate file path
-    const directory = getBackupDirectory();
-    const filename = generateBackupFilename();
-    const filePath = `${directory}/${filename}`;
+    return {
+      success: true,
+      json: JSON.stringify(backupData, null, 2),
+      filename: generateBackupFilename(),
+    };
+  } catch (error) {
+    console.error('Build backup JSON error:', error);
+    return { success: false, error: String(error) };
+  }
+}
 
-    // Ensure directory exists
+/**
+ * Export current configuration to a backup file in the Downloads folder.
+ * @deprecated On Android 10+, use buildBackupJson() + FilePickerModule.saveJsonFile() instead
+ * to avoid EACCES permission errors. This function is kept for Android 9 and below.
+ */
+export async function exportBackup(): Promise<{ success: boolean; filePath?: string; error?: string }> {
+  try {
+    const hasPermission = await requestStoragePermission();
+    if (!hasPermission) {
+      return { success: false, error: 'Storage permission denied' };
+    }
+
+    const built = await buildBackupJson();
+    if (!built.success || !built.json || !built.filename) {
+      return { success: false, error: built.error || 'Failed to build backup' };
+    }
+
+    const directory = getBackupDirectory();
+    const filePath = `${directory}/${built.filename}`;
+
     const dirExists = await RNFS.exists(directory);
     if (!dirExists) {
       await RNFS.mkdir(directory);
     }
 
-    // Write backup file
-    const jsonContent = JSON.stringify(backupData, null, 2);
-    await RNFS.writeFile(filePath, jsonContent, 'utf8');
-
+    await RNFS.writeFile(filePath, built.json, 'utf8');
     return { success: true, filePath };
   } catch (error) {
     console.error('Export backup error:', error);

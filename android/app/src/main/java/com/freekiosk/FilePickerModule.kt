@@ -24,10 +24,12 @@ class FilePickerModule(reactContext: ReactApplicationContext) :
         private const val TAG = "FilePickerModule"
         private const val PICK_MEDIA_REQUEST = 9001
         private const val PICK_JSON_REQUEST = 9002
+        private const val SAVE_JSON_REQUEST = 9003
         private const val MEDIA_DIR = "media_player"
     }
 
     private var pickPromise: Promise? = null
+    private var pendingSaveContent: String? = null
 
     init {
         reactContext.addActivityEventListener(this)
@@ -150,6 +152,39 @@ class FilePickerModule(reactContext: ReactApplicationContext) :
     }
 
     /**
+     * Open the Android "Save As" dialog (ACTION_CREATE_DOCUMENT) for JSON export.
+     * Uses SAF to bypass Scoped Storage restrictions on Android 10+.
+     * Writes `content` to the URI chosen by the user via ContentResolver.
+     * Returns a WritableMap with: { name, uri }
+     */
+    @ReactMethod
+    fun saveJsonFile(content: String, filename: String, promise: Promise) {
+        val activity = reactApplicationContext.currentActivity
+        if (activity == null) {
+            promise.reject("NO_ACTIVITY", "No activity available")
+            return
+        }
+        if (pickPromise != null) {
+            promise.reject("PICKER_BUSY", "A file picker is already open")
+            return
+        }
+        pendingSaveContent = content
+        pickPromise = promise
+        try {
+            val intent = Intent(Intent.ACTION_CREATE_DOCUMENT).apply {
+                addCategory(Intent.CATEGORY_OPENABLE)
+                type = "application/json"
+                putExtra(Intent.EXTRA_TITLE, filename)
+            }
+            activity.startActivityForResult(intent, SAVE_JSON_REQUEST)
+        } catch (e: Exception) {
+            pickPromise = null
+            pendingSaveContent = null
+            promise.reject("PICKER_ERROR", "Failed to open save dialog: ${e.message}")
+        }
+    }
+
+    /**
      * Delete a file that was previously copied to the media directory.
      */
     @ReactMethod
@@ -228,17 +263,50 @@ class FilePickerModule(reactContext: ReactApplicationContext) :
     // ==================== Activity Result Handling ====================
 
     override fun onActivityResult(activity: Activity, requestCode: Int, resultCode: Int, data: Intent?) {
-        if (requestCode != PICK_MEDIA_REQUEST && requestCode != PICK_JSON_REQUEST) return
+        if (requestCode != PICK_MEDIA_REQUEST && requestCode != PICK_JSON_REQUEST && requestCode != SAVE_JSON_REQUEST) return
 
         val promise = pickPromise ?: return
         pickPromise = null
 
         if (resultCode != Activity.RESULT_OK || data == null) {
-            promise.reject("PICKER_CANCELLED", "User cancelled file selection")
+            pendingSaveContent = null
+            promise.reject("PICKER_CANCELLED", "User cancelled")
             return
         }
 
         try {
+            // Handle JSON file save - write content to the URI chosen by the user
+            if (requestCode == SAVE_JSON_REQUEST) {
+                val uri = data.data
+                if (uri == null) {
+                    pendingSaveContent = null
+                    promise.reject("NO_URI", "No save location selected")
+                    return
+                }
+                val contentToWrite = pendingSaveContent ?: ""
+                pendingSaveContent = null
+                reactApplicationContext.contentResolver.openOutputStream(uri)?.use { output ->
+                    output.write(contentToWrite.toByteArray(Charsets.UTF_8))
+                } ?: run {
+                    promise.reject("WRITE_ERROR", "Could not open output stream for the selected location")
+                    return
+                }
+                var savedName = "backup.json"
+                reactApplicationContext.contentResolver.query(uri, null, null, null, null)?.use { cursor ->
+                    if (cursor.moveToFirst()) {
+                        val nameIdx = cursor.getColumnIndex(OpenableColumns.DISPLAY_NAME)
+                        if (nameIdx >= 0) savedName = cursor.getString(nameIdx)
+                    }
+                }
+                val result = Arguments.createMap().apply {
+                    putString("name", savedName)
+                    putString("uri", uri.toString())
+                }
+                Log.d(TAG, "Saved JSON file: $savedName")
+                promise.resolve(result)
+                return
+            }
+
             // Handle JSON file pick - read content directly via ContentResolver
             if (requestCode == PICK_JSON_REQUEST) {
                 val uri = data.data

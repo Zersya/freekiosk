@@ -18,7 +18,7 @@ import {
 import { Colors, Spacing, Typography } from '../../theme';
 import Icon from '../Icon';
 import {
-  exportBackup,
+  buildBackupJson,
   importBackup,
   importBackupFromContent,
   parseBackupContent,
@@ -67,20 +67,22 @@ const BackupRestoreSection: React.FC<BackupRestoreSectionProps> = ({
   const handleExportBackup = async () => {
     setIsExporting(true);
     try {
-      const result = await exportBackup();
-      if (result.success) {
-        Alert.alert(
-          '✅ Backup Created',
-          `Configuration exported successfully!\n\nFile saved to:\n${result.filePath}`,
-          [{ text: 'OK' }]
-        );
-      } else {
-        Alert.alert(
-          '❌ Export Failed',
-          result.error || 'Unknown error occurred',
-          [{ text: 'OK' }]
-        );
+      // Build JSON content first
+      const built = await buildBackupJson();
+      if (!built.success || !built.json || !built.filename) {
+        Alert.alert('❌ Export Failed', built.error || 'Failed to prepare backup data', [{ text: 'OK' }]);
+        return;
       }
+      // Use SAF "Save As" dialog — works on all Android versions without storage permissions
+      const saved = await FilePickerModule.saveJsonFile(built.json, built.filename);
+      Alert.alert(
+        '✅ Backup Created',
+        `Configuration exported successfully!\n\nSaved as: ${saved.name}`,
+        [{ text: 'OK' }]
+      );
+    } catch (error: any) {
+      if (error?.code === 'PICKER_CANCELLED') return;
+      Alert.alert('❌ Export Failed', error?.message || String(error), [{ text: 'OK' }]);
     } finally {
       setIsExporting(false);
     }
