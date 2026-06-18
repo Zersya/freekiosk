@@ -71,6 +71,8 @@ interface DisplayTabProps {
   // WebView Zoom Level
   zoomLevel: number;
   onZoomLevelChange: (value: number) => void;
+  zoomMode: string;
+  onZoomModeChange: (value: string) => void;
   disableUserZoom: boolean;
   onDisableUserZoomChange: (value: boolean) => void;
   
@@ -164,6 +166,8 @@ const DisplayTab: React.FC<DisplayTabProps> = ({
   onKeyboardModeChange,
   zoomLevel,
   onZoomLevelChange,
+  zoomMode,
+  onZoomModeChange,
   disableUserZoom,
   onDisableUserZoomChange,
   customUserAgent,
@@ -838,6 +842,30 @@ const DisplayTab: React.FC<DisplayTabProps> = ({
       {/* Web Page Zoom - Only in WebView mode */}
       {displayMode === 'webview' && (
         <SettingsSection title="Web Page Zoom" icon="magnify">
+          <SettingsRadioGroup
+            hint="How the zoom level is applied to the page"
+            options={[
+              {
+                value: 'standard',
+                label: 'Standard',
+                hint: 'Zooms the whole document (html). Recommended for most websites.',
+              },
+              {
+                value: 'fit',
+                label: 'Home Assistant',
+                hint: 'Zooms the page body instead, the same way HADashboard does — Home Assistant dashboards re-flow their cards and fill the screen.',
+              },
+            ]}
+            value={zoomMode}
+            onValueChange={onZoomModeChange}
+          />
+          {zoomMode === 'fit' && (
+            <SettingsInfoBox variant="info">
+              <Text style={styles.infoText}>
+                🏠 Home Assistant mode zooms the page body (the HADashboard method), so dashboards re-flow and fill the screen instead of cards overflowing. If a non-HA site looks off, switch back to "Standard".
+              </Text>
+            </SettingsInfoBox>
+          )}
           <SettingsSlider
             label=""
             hint={`Zoom level: ${zoomLevel}% — Adjusts how web pages are rendered. 100% matches Chrome's default.`}

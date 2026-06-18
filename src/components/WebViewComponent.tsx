@@ -40,6 +40,7 @@ interface WebViewComponentProps {
   printEnabled?: boolean; // Enable window.print() interception for native printing
   printPaperSize?: string; // Default paper size: 'A4' | 'A5' | 'A3' | 'LETTER' | 'LEGAL'
   zoomLevel?: number; // Zoom level percentage (50-200, default 100)
+  zoomMode?: string; // 'standard' (CSS zoom) | 'fit' (viewport reflow, #188)
   disableUserZoom?: boolean; // Prevent pinch-to-zoom and double-tap zoom
   customUserAgent?: string; // Custom User-Agent string (empty = default modern Chrome UA)
   basicAuthCredential?: { username: string; password: string };
@@ -70,6 +71,7 @@ const WebViewComponent = forwardRef<WebViewComponentRef, WebViewComponentProps>(
   printEnabled = false,
   printPaperSize = 'A4',
   zoomLevel = 100,
+  zoomMode = 'standard',
   disableUserZoom = false,
   customUserAgent = '',
   basicAuthCredential,
@@ -260,21 +262,53 @@ const WebViewComponent = forwardRef<WebViewComponentRef, WebViewComponentProps>(
     }
     window.__FREEKIOSK_INITIALIZED__ = true;
 
-    // Apply CSS zoom to scale the entire page layout (text + containers + images)
-    ${zoomLevel !== 100 ? `
-    document.documentElement.style.zoom = '${zoomLevel / 100}';
-    ` : ''}
+    // ===== Web page zoom (#188) =====
+    // CSS zoom, but the target element differs:
+    //   'standard' -> document.documentElement (<html>). Good for most sites.
+    //   'fit'      -> document.body. This is exactly what HADashboard does
+    //                 (twanjaarsveld/HADashboard, MainActivity.applyCssZoom:
+    //                 'document.body.style.zoom = factor'). Home Assistant measures
+    //                 its card layout from the body's content box, so zooming the
+    //                 body makes the dashboard RE-FLOW its columns and fill the
+    //                 screen, instead of just enlarging card contents inside cards
+    //                 that don't grow (which is what zooming <html> does). The native
+    //                 useWideViewPort + loadWithOverviewMode (scalesPageToFit) are
+    //                 already enabled, matching HADashboard's WebView settings.
+    (function() {
+      var ZOOM = ${zoomLevel} / 100;
+      var FIT = ${zoomMode === 'fit' ? 'true' : 'false'};
+      var DISABLE_USER_ZOOM = ${disableUserZoom ? 'true' : 'false'};
 
-    // Disable user zoom (pinch-to-zoom and double-tap zoom) when configured
-    ${disableUserZoom ? `
-    document.addEventListener('touchstart', function(e) {
-      if (e.touches.length > 1) { e.preventDefault(); }
-    }, { passive: false });
-    document.addEventListener('gesturestart', function(e) { e.preventDefault(); });
-    var meta = document.querySelector('meta[name="viewport"]');
-    if (!meta) { meta = document.createElement('meta'); meta.name = 'viewport'; document.head.appendChild(meta); }
-    meta.content = 'width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no';
-    ` : '// User zoom not disabled'}
+      // Block pinch / double-tap zoom gestures when requested (applies in both modes).
+      if (DISABLE_USER_ZOOM) {
+        document.addEventListener('touchstart', function(e) {
+          if (e.touches.length > 1) { e.preventDefault(); }
+        }, { passive: false });
+        document.addEventListener('gesturestart', function(e) { e.preventDefault(); });
+        var vp = document.querySelector('meta[name="viewport"]');
+        if (!vp) {
+          vp = document.createElement('meta');
+          vp.setAttribute('name', 'viewport');
+          (document.head || document.documentElement).appendChild(vp);
+        }
+        vp.setAttribute('content', 'width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no');
+      }
+
+      if (ZOOM !== 1) {
+        var applyZoom = function() {
+          if (FIT) {
+            if (document.body) { document.body.style.zoom = String(ZOOM); }
+          } else {
+            document.documentElement.style.zoom = String(ZOOM);
+          }
+        };
+        applyZoom();
+        // body may not exist yet if injected very early — re-apply once on DOM ready.
+        if (document.readyState === 'loading') {
+          document.addEventListener('DOMContentLoaded', applyZoom);
+        }
+      }
+    })();
 
     // Ensure storage is working properly
     try {

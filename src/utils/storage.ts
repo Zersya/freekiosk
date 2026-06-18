@@ -114,6 +114,8 @@ const KEYS = {
   PRINT_PAPER_SIZE: '@kiosk_print_paper_size',
   // WebView Zoom Level
   WEBVIEW_ZOOM_LEVEL: '@kiosk_webview_zoom_level',
+  // WebView Zoom Mode ('standard' = CSS zoom | 'fit' = viewport reflow, #188)
+  WEBVIEW_ZOOM_MODE: '@kiosk_webview_zoom_mode',
   // Disable User Zoom (pinch-to-zoom)
   DISABLE_USER_ZOOM: '@kiosk_disable_user_zoom',
   // Custom User Agent
@@ -365,6 +367,7 @@ export const StorageService = {
         KEYS.PRINT_ENABLED,
         // WebView Zoom Level
         KEYS.WEBVIEW_ZOOM_LEVEL,
+        KEYS.WEBVIEW_ZOOM_MODE,
         // Custom User Agent
         KEYS.CUSTOM_USER_AGENT,
         // MQTT
@@ -2061,6 +2064,29 @@ export const StorageService = {
     } catch (error) {
       console.error('Error getting WebView zoom level:', error);
       return 100;
+    }
+  },
+
+  // ============ WebView Zoom Mode (#188) ============
+  // 'standard' = CSS zoom on document.documentElement (<html>).
+  // 'fit' = CSS zoom on document.body instead (the HADashboard method), so Home
+  //          Assistant dashboards re-flow their cards and fill the screen.
+
+  saveWebViewZoomMode: async (value: string): Promise<void> => {
+    try {
+      await AsyncStorage.setItem(KEYS.WEBVIEW_ZOOM_MODE, value);
+    } catch (error) {
+      console.error('Error saving WebView zoom mode:', error);
+    }
+  },
+
+  getWebViewZoomMode: async (): Promise<string> => {
+    try {
+      const value = await AsyncStorage.getItem(KEYS.WEBVIEW_ZOOM_MODE);
+      return value || 'standard';
+    } catch (error) {
+      console.error('Error getting WebView zoom mode:', error);
+      return 'standard';
     }
   },
 

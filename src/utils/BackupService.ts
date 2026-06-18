@@ -103,6 +103,7 @@ const BACKUP_KEYS = [
   '@kiosk_pdf_viewer_enabled',
   // WebView Zoom Level
   '@kiosk_webview_zoom_level',
+  '@kiosk_webview_zoom_mode',
   // Custom User Agent
   '@kiosk_custom_user_agent',
   // MQTT

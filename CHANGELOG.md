@@ -21,6 +21,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - 🔍 **WebView zoom now scales the full page layout, not just text** (#188): The zoom setting previously used Android's `textZoom` which only scaled text size, causing card contents in Home Assistant dashboards to overflow their containers. Zoom now applies a CSS `zoom` property on the root element, scaling text, images, and layout containers uniformly.
 
+- 🔍 **New "Home Assistant" zoom mode that re-flows dashboards** (#188): Zooming `<html>` (the "Standard" mode) enlarged Home Assistant card *contents* without resizing the cards, so they overflowed. HADashboard avoids this by applying CSS `zoom` to `document.body` instead — HA measures its card layout from the body, so zooming the body makes the dashboard re-flow its columns and fill the screen. Added a **Zoom mode** selector under Display → Web Page Zoom: *Standard* (zooms `<html>`, unchanged default) and *Home Assistant* (zooms `<body>`, matching HADashboard's method). Opt-in, since a few non-HA sites may render differently.
+
 
 - 🔄 **Black screen / stuck on "Starting kiosk…" after reboot in Device Owner mode** (#176): Regression introduced in v1.2.20 (#172 fix). `setScreenCaptureDisabled(adminComponent, true)` was called between `setLockTaskPackages()` and `startLockTask()`. On Android 12+ devices (Lenovo, Samsung, KTC), this DPM call triggers a window policy change mid-sequence that disrupts lock task startup, leaving `BootLockActivity` stuck and `MainActivity` unable to take over. Fixed by moving `setScreenCaptureDisabled` to after `startLockTask()` so the lock task session is fully established first.
 
