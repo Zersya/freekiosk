@@ -926,6 +926,18 @@ const KioskScreen: React.FC<KioskScreenProps> = ({ navigation }) => {
     };
   }, [navigation]);
 
+  // #180 — Tell native when the Kiosk screen is the active route, so the native
+  // tap-to-settings fallback (MainActivity.dispatchTouchEvent) only counts taps
+  // here and never while the user is inside Pin/Settings. Revert: delete this block.
+  useFocusEffect(
+    useCallback(() => {
+      KioskModule.setKioskScreenActive?.(true).catch(() => {});
+      return () => {
+        KioskModule.setKioskScreenActive?.(false).catch(() => {});
+      };
+    }, [])
+  );
+
   useEffect(() => {
     // Don't apply manual brightness when auto-brightness is active
     if (autoBrightnessEnabled) return;

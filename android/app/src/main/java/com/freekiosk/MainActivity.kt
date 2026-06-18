@@ -670,8 +670,13 @@ class MainActivity : ReactActivity() {
     if (keyCode == KeyEvent.KEYCODE_VOLUME_UP) {
       // Check if feature is enabled
       val volumeUp5TapEnabled = getAsyncStorageValue("@kiosk_volume_up_5tap_enabled", "true") == "true"
-      
-      if (volumeUp5TapEnabled) {
+
+      // #180 — Only act while the Kiosk screen is the active route, so Volume-Up x5
+      // doesn't kick the user out of Pin/Settings (same gate as the tap fallback).
+      // kioskScreenActive is set true on KioskScreen mount/focus, so a genuinely
+      // stuck user (still on the kiosk screen) keeps the escape; it only goes false
+      // once we've already navigated to Pin/Settings.
+      if (volumeUp5TapEnabled && kioskScreenActive) {
         val currentTime = System.currentTimeMillis()
         
         // Reset counter if timeout exceeded
@@ -716,6 +721,117 @@ class MainActivity : ReactActivity() {
     }
     return super.onKeyUp(keyCode, event)
   }
+
+  // ============================================================================
+  // #180 — Native tap-to-settings fallback (REVERTABLE BLOCK)
+  // ----------------------------------------------------------------------------
+  // In WebView/media `tap_anywhere` mode the "N taps -> settings" gesture relies
+  // on JavaScript injected into the page (a `touchend` listener). On some OEM
+  // WebViews, or pages that route touches into a cross-origin iframe, that
+  // in-page event never reaches our listener, so the user is stranded with no
+  // way back to settings even though the page loaded fine (#180, benfrancois).
+  //
+  // dispatchTouchEvent() observes every touch at the Activity level, BEFORE it
+  // is dispatched to any view, completely independently of the page JS, iframes
+  // or OEM WebView quirks, and works under lock-task. It counts N spatially
+  // grouped taps (same proximity/timeout idea as the JS path) and then fires the
+  // existing `navigateToPin` event. It NEVER consumes the touch (always returns
+  // super.dispatchTouchEvent), so page interaction is unaffected. This mirrors
+  // the existing Volume-Up x5 escape hatch.
+  //
+  // To revert this feature entirely: delete this whole block (fields + methods +
+  // the dispatchTouchEvent override below). Nothing else references it.
+  // Disable at runtime: set AsyncStorage `@kiosk_tap_to_settings_native_enabled`
+  // to "false".
+  // ============================================================================
+  // Set from JS (KioskScreen focus/blur via KioskModule.setKioskScreenActive).
+  // This is a SINGLE-Activity app: dispatchTouchEvent() fires for every screen
+  // (Kiosk, Pin, Settings…). Without this gate, 5 grouped taps while *inside*
+  // Settings would also fire navigateToPin and kick the user out. Defaults false
+  // (fail-safe: no false positives if the focus signal never arrives).
+  @Volatile var kioskScreenActive = false
+
+  private var tapSettingsCount = 0
+  private var tapSettingsFirstTapTime = 0L
+  private var tapSettingsFirstX = 0f
+  private var tapSettingsFirstY = 0f
+  // Physical px radius for grouping taps. ~80 CSS px (JS TAP_PROXIMITY_RADIUS)
+  // maps to roughly this on typical tablet densities; kept generous on purpose
+  // since this is an escape hatch, not a precision gesture.
+  private val tapSettingsProximityPx = 150f
+
+  // Cached config — AsyncStorage is SQLite-backed, so we must NOT read it on
+  // every touch. Re-read at most once per TTL.
+  private var tapSettingsCfgReadAt = 0L
+  private val tapSettingsCfgTtlMs = 3000L
+  private var tapSettingsEnabled = false
+  private var tapSettingsRequiredTaps = 5
+  private var tapSettingsTimeoutMs = 1500L
+
+  private fun refreshTapSettingsConfig() {
+    val now = System.currentTimeMillis()
+    if (now - tapSettingsCfgReadAt < tapSettingsCfgTtlMs) return
+    tapSettingsCfgReadAt = now
+    try {
+      val featureEnabled = getAsyncStorageValue("@kiosk_tap_to_settings_native_enabled", "true") == "true"
+      val displayMode = getAsyncStorageValue("@kiosk_display_mode", "webview")
+      val returnMode = getAsyncStorageValue("@kiosk_return_mode", "tap_anywhere")
+      // Only active where the JS path is the sole escape: WebView/media + tap_anywhere.
+      // (button mode has its own RN return button; external_app uses OverlayService.)
+      tapSettingsEnabled = featureEnabled &&
+        (displayMode == "webview" || displayMode == "media_player") &&
+        returnMode == "tap_anywhere"
+      tapSettingsRequiredTaps = getAsyncStorageValue("@kiosk_return_tap_count", "5").toIntOrNull()?.coerceIn(2, 20) ?: 5
+      tapSettingsTimeoutMs = getAsyncStorageValue("@kiosk_return_tap_timeout", "1500").toLongOrNull()?.coerceIn(500L, 5000L) ?: 1500L
+    } catch (e: Exception) {
+      tapSettingsEnabled = false
+    }
+  }
+
+  private fun handleTapForSettings(x: Float, y: Float) {
+    val now = System.currentTimeMillis()
+    if (tapSettingsCount == 0) {
+      tapSettingsFirstTapTime = now
+      tapSettingsFirstX = x
+      tapSettingsFirstY = y
+      tapSettingsCount = 1
+    } else {
+      val elapsed = now - tapSettingsFirstTapTime
+      val dx = x - tapSettingsFirstX
+      val dy = y - tapSettingsFirstY
+      val withinProximity = (dx * dx + dy * dy) <= (tapSettingsProximityPx * tapSettingsProximityPx)
+      if (elapsed > tapSettingsTimeoutMs || !withinProximity) {
+        // Too slow or too far from the first tap -> start a fresh sequence here.
+        tapSettingsFirstTapTime = now
+        tapSettingsFirstX = x
+        tapSettingsFirstY = y
+        tapSettingsCount = 1
+      } else {
+        tapSettingsCount++
+      }
+    }
+
+    if (tapSettingsCount >= tapSettingsRequiredTaps) {
+      tapSettingsCount = 0
+      android.util.Log.d("MainActivity", "Native $tapSettingsRequiredTaps-tap detected (#180 fallback) - navigating to PIN")
+      blockAutoRelaunch = true
+      Handler(Looper.getMainLooper()).postDelayed({
+        sendNavigateToPinEvent()
+      }, 100)
+    }
+  }
+
+  override fun dispatchTouchEvent(ev: android.view.MotionEvent?): Boolean {
+    // Observe (never consume) the initial press of each gesture.
+    if (ev != null && ev.actionMasked == android.view.MotionEvent.ACTION_DOWN && kioskScreenActive) {
+      refreshTapSettingsConfig()
+      if (tapSettingsEnabled) {
+        handleTapForSettings(ev.rawX, ev.rawY)
+      }
+    }
+    return super.dispatchTouchEvent(ev)
+  }
+  // ===== END #180 native tap-to-settings fallback =====
 
   override fun onBackPressed() {
     val prefs = getSharedPreferences("FreeKioskSettings", Context.MODE_PRIVATE)

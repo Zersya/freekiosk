@@ -37,6 +37,8 @@ interface KioskModuleInterface {
   openAndroidSettings(settingsPage?: string | null): Promise<boolean>;
   // Bring FreeKiosk's activity to foreground (used when screensaver activates in External App mode)
   bringToFront(): Promise<boolean>;
+  // #180 — Gate the native tap-to-settings fallback to the kiosk screen only
+  setKioskScreenActive(active: boolean): Promise<boolean>;
 }
 
 const { KioskModule } = NativeModules;
