@@ -58,6 +58,7 @@ const KEYS = {
   REST_API_PORT: '@kiosk_rest_api_port',
   REST_API_KEY: '@kiosk_rest_api_key',
   REST_API_ALLOW_CONTROL: '@kiosk_rest_api_allow_control',
+  REST_API_REMOTE_SCREENSHOT: '@kiosk_rest_api_remote_screenshot',
   // Power Button setting
   ALLOW_POWER_BUTTON: '@kiosk_allow_power_button',
   // Notifications (NFC support)
@@ -1369,6 +1370,24 @@ export const StorageService = {
     } catch (error) {
       console.error('Error getting REST API allow control:', error);
       return true;
+    }
+  },
+
+  saveRestApiRemoteScreenshot: async (value: boolean): Promise<void> => {
+    try {
+      await AsyncStorage.setItem(KEYS.REST_API_REMOTE_SCREENSHOT, JSON.stringify(value));
+    } catch (error) {
+      console.error('Error saving REST API remote screenshot:', error);
+    }
+  },
+
+  getRestApiRemoteScreenshot: async (): Promise<boolean> => {
+    try {
+      const value = await AsyncStorage.getItem(KEYS.REST_API_REMOTE_SCREENSHOT);
+      return value ? JSON.parse(value) : false;
+    } catch (error) {
+      console.error('Error getting REST API remote screenshot:', error);
+      return false;
     }
   },
 

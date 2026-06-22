@@ -50,6 +50,9 @@ import java.io.ByteArrayOutputStream
 import java.net.Inet4Address
 import java.net.NetworkInterface
 import java.util.Locale
+import java.util.concurrent.CountDownLatch
+import java.util.concurrent.TimeUnit
+import android.content.ComponentName
 
 /**
  * React Native Module for HTTP Server management
@@ -1851,38 +1854,137 @@ class HttpServerModule(private val reactContext: ReactApplicationContext) :
 
     private fun captureScreenshot(): java.io.InputStream? {
         return try {
-            var screenshot: ByteArrayInputStream? = null
-            val latch = java.util.concurrent.CountDownLatch(1)
-            
-            UiThreadUtil.runOnUiThread {
-                try {
-                    val activity = reactContext.currentActivity
-                    val rootView = activity?.window?.decorView?.rootView
-                    
-                    if (rootView != null) {
-                        rootView.isDrawingCacheEnabled = true
-                        val bitmap = Bitmap.createBitmap(rootView.drawingCache)
-                        rootView.isDrawingCacheEnabled = false
-                        
-                        val outputStream = ByteArrayOutputStream()
-                        bitmap.compress(Bitmap.CompressFormat.PNG, 90, outputStream)
-                        screenshot = ByteArrayInputStream(outputStream.toByteArray())
-                        bitmap.recycle()
-                    }
-                } catch (e: Exception) {
-                    Log.e(TAG, "Failed to capture screenshot on UI thread", e)
-                } finally {
-                    latch.countDown()
-                }
+            // 1. MediaProjection (non-DO tablets with user consent)
+            ScreenCaptureManager.captureFrame()?.let {
+                Log.d(TAG, "Screenshot captured via MediaProjection")
+                return it
             }
-            
-            // Wait for UI thread to complete (max 5 seconds)
-            latch.await(5, java.util.concurrent.TimeUnit.SECONDS)
-            screenshot
+
+            // 2. Device Owner full-screen capture (Android 11+)
+            captureDeviceOwnerScreenshot()?.let {
+                Log.d(TAG, "Screenshot captured via DevicePolicyManager.takeScreenshot")
+                return it
+            }
+
+            // 3. Shell screencap (best-effort, OEM-dependent)
+            captureShellScreenshot()?.let {
+                Log.d(TAG, "Screenshot captured via screencap")
+                return it
+            }
+
+            // 4. Fallback: FreeKiosk window only (dashboard / WebView)
+            captureViewScreenshot()?.also {
+                Log.d(TAG, "Screenshot captured via view drawingCache (window only)")
+            }
         } catch (e: Exception) {
             Log.e(TAG, "Failed to capture screenshot", e)
             null
         }
+    }
+
+    private fun bitmapToPngStream(bitmap: Bitmap): ByteArrayInputStream {
+        val outputStream = ByteArrayOutputStream()
+        bitmap.compress(Bitmap.CompressFormat.PNG, 90, outputStream)
+        val stream = ByteArrayInputStream(outputStream.toByteArray())
+        if (!bitmap.isRecycled) {
+            bitmap.recycle()
+        }
+        return stream
+    }
+
+    private fun isPngBytes(bytes: ByteArray): Boolean {
+        return bytes.size > 8 &&
+            bytes[0] == 0x89.toByte() &&
+            bytes[1] == 0x50.toByte() &&
+            bytes[2] == 0x4E.toByte() &&
+            bytes[3] == 0x47.toByte()
+    }
+
+    private fun captureDeviceOwnerScreenshot(): ByteArrayInputStream? {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.R) {
+            return null
+        }
+
+        val dpm = reactContext.getSystemService(Context.DEVICE_POLICY_SERVICE)
+            as android.app.admin.DevicePolicyManager
+        if (!dpm.isDeviceOwnerApp(reactContext.packageName)) {
+            return null
+        }
+
+        val adminComponent = ComponentName(reactContext, DeviceAdminReceiver::class.java)
+        var screenshot: ByteArrayInputStream? = null
+        val latch = CountDownLatch(1)
+
+        try {
+            dpm.takeScreenshot(adminComponent, reactContext.mainExecutor) { screenshotResult ->
+                try {
+                    val bitmap = screenshotResult.bitmap
+                    if (bitmap != null && !bitmap.isRecycled) {
+                        screenshot = bitmapToPngStream(bitmap)
+                    } else {
+                        Log.w(TAG, "DPM takeScreenshot returned null bitmap")
+                    }
+                } catch (e: Exception) {
+                    Log.e(TAG, "Failed to process DPM screenshot", e)
+                } finally {
+                    latch.countDown()
+                }
+            }
+
+            if (!latch.await(10, TimeUnit.SECONDS)) {
+                Log.w(TAG, "DPM takeScreenshot timed out")
+            }
+        } catch (e: Exception) {
+            Log.e(TAG, "DPM takeScreenshot failed: ${e.message}", e)
+            if (latch.count > 0) {
+                latch.countDown()
+            }
+        }
+
+        return screenshot
+    }
+
+    private fun captureShellScreenshot(): ByteArrayInputStream? {
+        return try {
+            val process = Runtime.getRuntime().exec(arrayOf("screencap", "-p"))
+            val bytes = process.inputStream.use { it.readBytes() }
+            val exitCode = process.waitFor()
+            if (exitCode == 0 && isPngBytes(bytes)) {
+                ByteArrayInputStream(bytes)
+            } else {
+                Log.w(TAG, "screencap failed or returned invalid PNG (exit=$exitCode, bytes=${bytes.size})")
+                null
+            }
+        } catch (e: Exception) {
+            Log.w(TAG, "screencap failed: ${e.message}")
+            null
+        }
+    }
+
+    private fun captureViewScreenshot(): ByteArrayInputStream? {
+        var screenshot: ByteArrayInputStream? = null
+        val latch = CountDownLatch(1)
+
+        UiThreadUtil.runOnUiThread {
+            try {
+                val activity = reactContext.currentActivity
+                val rootView = activity?.window?.decorView?.rootView
+
+                if (rootView != null) {
+                    rootView.isDrawingCacheEnabled = true
+                    val bitmap = Bitmap.createBitmap(rootView.drawingCache)
+                    rootView.isDrawingCacheEnabled = false
+                    screenshot = bitmapToPngStream(bitmap)
+                }
+            } catch (e: Exception) {
+                Log.e(TAG, "Failed to capture screenshot on UI thread", e)
+            } finally {
+                latch.countDown()
+            }
+        }
+
+        latch.await(5, TimeUnit.SECONDS)
+        return screenshot
     }
     
     /**
