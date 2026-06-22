@@ -5,6 +5,7 @@ import android.content.ComponentName
 import android.content.Context
 import android.content.Intent
 import android.graphics.Bitmap
+import android.graphics.BitmapFactory
 import android.graphics.PixelFormat
 import android.hardware.display.DisplayManager
 import android.hardware.display.VirtualDisplay
@@ -123,6 +124,32 @@ object ScreenCaptureManager {
         setRemoteCaptureEnabled(context.applicationContext, true)
         syncDeviceOwnerScreenCapturePolicy(context.applicationContext)
         Log.d(TAG, "MediaProjection started (${width}x${height})")
+    }
+
+    fun getCaptureSize(): Pair<Int, Int> = Pair(width, height)
+
+    fun getLatestJpegBytes(quality: Int = 60): ByteArray? {
+        var pngBytes = latestPngBytes.get()
+        if (pngBytes == null || pngBytes.isEmpty()) {
+            captureFrame()?.close()
+            pngBytes = latestPngBytes.get()
+        }
+        if (pngBytes == null || pngBytes.isEmpty()) {
+            return null
+        }
+
+        return try {
+            val bitmap = BitmapFactory.decodeByteArray(pngBytes, 0, pngBytes.size) ?: return null
+            val outputStream = ByteArrayOutputStream()
+            bitmap.compress(Bitmap.CompressFormat.JPEG, quality.coerceIn(1, 100), outputStream)
+            if (!bitmap.isRecycled) {
+                bitmap.recycle()
+            }
+            outputStream.toByteArray()
+        } catch (e: Exception) {
+            Log.e(TAG, "Failed to convert PNG to JPEG", e)
+            null
+        }
     }
 
     fun captureFrame(): ByteArrayInputStream? {

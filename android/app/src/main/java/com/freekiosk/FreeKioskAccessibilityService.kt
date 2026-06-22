@@ -7,8 +7,13 @@ import android.graphics.Path
 import android.graphics.Rect
 import android.os.Build
 import android.os.Bundle
+import android.os.Handler
+import android.os.Looper
 import android.os.SystemClock
 import android.util.Log
+import java.util.concurrent.CountDownLatch
+import java.util.concurrent.TimeUnit
+import java.util.concurrent.atomic.AtomicBoolean
 import android.view.KeyCharacterMap
 import android.view.KeyEvent
 import android.view.View
@@ -53,7 +58,71 @@ class FreeKioskAccessibilityService : AccessibilityService() {
             private set
         
         fun isRunning(): Boolean = instance != null
+
+        /**
+         * Simulate a tap at device pixel coordinates (requires API 24+).
+         * Used by Remote Assist to interact with external apps.
+         */
+        fun tapAt(x: Int, y: Int): Boolean {
+            val service = instance
+            if (service == null) {
+                Log.w(TAG, "tapAt: accessibility service not running")
+                return false
+            }
+            if (Build.VERSION.SDK_INT < Build.VERSION_CODES.N) return false
+
+            if (Looper.myLooper() == Looper.getMainLooper()) {
+                return tapAtGesture(service, x.toFloat(), y.toFloat())
+            }
+
+            val result = AtomicBoolean(false)
+            val latch = CountDownLatch(1)
+            Handler(Looper.getMainLooper()).post {
+                try {
+                    result.set(tapAtGesture(service, x.toFloat(), y.toFloat()))
+                } finally {
+                    latch.countDown()
+                }
+            }
+
+            return try {
+                latch.await(5, TimeUnit.SECONDS) && result.get()
+            } catch (e: InterruptedException) {
+                Log.w(TAG, "tapAt interrupted: ${e.message}")
+                false
+            }
+        }
         
+        fun swipeAt(x1: Int, y1: Int, x2: Int, y2: Int, durationMs: Long = 300): Boolean {
+            val service = instance
+            if (service == null) {
+                Log.w(TAG, "swipeAt: accessibility service not running")
+                return false
+            }
+            if (Build.VERSION.SDK_INT < Build.VERSION_CODES.N) return false
+
+            if (Looper.myLooper() == Looper.getMainLooper()) {
+                return swipeAtGesture(service, x1.toFloat(), y1.toFloat(), x2.toFloat(), y2.toFloat(), durationMs)
+            }
+
+            val result = AtomicBoolean(false)
+            val latch = CountDownLatch(1)
+            Handler(Looper.getMainLooper()).post {
+                try {
+                    result.set(swipeAtGesture(service, x1.toFloat(), y1.toFloat(), x2.toFloat(), y2.toFloat(), durationMs))
+                } finally {
+                    latch.countDown()
+                }
+            }
+
+            return try {
+                latch.await(5, TimeUnit.SECONDS) && result.get()
+            } catch (e: InterruptedException) {
+                Log.w(TAG, "swipeAt interrupted: ${e.message}")
+                false
+            }
+        }
+
         /**
          * Send a single key press.
          * Strategy: globalAction → InputMethod (API 33+) → a11y navigation → ACTION_SET_TEXT → input keyevent
@@ -433,20 +502,104 @@ class FreeKioskAccessibilityService : AccessibilityService() {
          * Used as fallback when no focused/clickable element is found for Select.
          */
         private fun tapCenterGesture(service: FreeKioskAccessibilityService): Boolean {
+            val dm = service.resources.displayMetrics
+            return tapAtGesture(service, dm.widthPixels / 2f, dm.heightPixels / 2f)
+        }
+
+        private fun swipeAtGesture(
+            service: FreeKioskAccessibilityService,
+            x1: Float,
+            y1: Float,
+            x2: Float,
+            y2: Float,
+            durationMs: Long
+        ): Boolean {
             if (Build.VERSION.SDK_INT < Build.VERSION_CODES.N) return false
             try {
-                val dm = service.resources.displayMetrics
-                val cx = dm.widthPixels / 2f
-                val cy = dm.heightPixels / 2f
-                
                 val path = Path()
-                path.moveTo(cx, cy)
-                
+                path.moveTo(x1, y1)
+                path.lineTo(x2, y2)
+
+                val distance = kotlin.math.hypot((x2 - x1).toDouble(), (y2 - y1).toDouble()).toFloat()
+                val duration = (durationMs.takeIf { it > 0 }
+                    ?: (200 + distance / 4).toLong()).coerceIn(150, 800)
+
                 val gesture = GestureDescription.Builder()
-                    .addStroke(GestureDescription.StrokeDescription(path, 0, 50))
+                    .addStroke(GestureDescription.StrokeDescription(path, 0, duration))
                     .build()
-                val ok = service.dispatchGesture(gesture, null, null)
-                Log.d(TAG, "Tap center gesture: ok=$ok")
+
+                val completed = AtomicBoolean(false)
+                val latch = CountDownLatch(1)
+                val mainHandler = Handler(Looper.getMainLooper())
+
+                val queued = service.dispatchGesture(
+                    gesture,
+                    object : GestureResultCallback() {
+                        override fun onCompleted(gestureDescription: GestureDescription?) {
+                            completed.set(true)
+                            latch.countDown()
+                        }
+
+                        override fun onCancelled(gestureDescription: GestureDescription?) {
+                            latch.countDown()
+                        }
+                    },
+                    mainHandler
+                )
+
+                if (!queued) {
+                    Log.w(TAG, "Swipe gesture not queued ($x1,$y1)->($x2,$y2)")
+                    return false
+                }
+
+                latch.await(5, TimeUnit.SECONDS)
+                val ok = completed.get() || queued
+                Log.d(TAG, "Swipe gesture ($x1,$y1)->($x2,$y2): queued=$queued, completed=${completed.get()}")
+                return ok
+            } catch (e: Exception) {
+                Log.w(TAG, "Swipe gesture failed: ${e.message}")
+                return false
+            }
+        }
+
+        private fun tapAtGesture(service: FreeKioskAccessibilityService, x: Float, y: Float): Boolean {
+            if (Build.VERSION.SDK_INT < Build.VERSION_CODES.N) return false
+            try {
+                val path = Path()
+                path.moveTo(x, y)
+                path.lineTo(x + 1f, y + 1f)
+
+                val gesture = GestureDescription.Builder()
+                    .addStroke(GestureDescription.StrokeDescription(path, 0, 100))
+                    .build()
+
+                val completed = AtomicBoolean(false)
+                val latch = CountDownLatch(1)
+                val mainHandler = Handler(Looper.getMainLooper())
+
+                val queued = service.dispatchGesture(
+                    gesture,
+                    object : GestureResultCallback() {
+                        override fun onCompleted(gestureDescription: GestureDescription?) {
+                            completed.set(true)
+                            latch.countDown()
+                        }
+
+                        override fun onCancelled(gestureDescription: GestureDescription?) {
+                            latch.countDown()
+                        }
+                    },
+                    mainHandler
+                )
+
+                if (!queued) {
+                    Log.w(TAG, "Tap gesture not queued at ($x, $y)")
+                    return false
+                }
+
+                latch.await(5, TimeUnit.SECONDS)
+                val ok = completed.get() || queued
+                Log.d(TAG, "Tap gesture at ($x, $y): queued=$queued, completed=${completed.get()}")
                 return ok
             } catch (e: Exception) {
                 Log.w(TAG, "Tap gesture failed: ${e.message}")

@@ -486,6 +486,12 @@ class HttpServerModule(private val reactContext: ReactApplicationContext) :
             put("deviceName", Build.DEVICE)
             put("product", Build.PRODUCT)
             put("uptime", android.os.SystemClock.elapsedRealtime() / 1000)
+            val (captureWidth, captureHeight) = ScreenCaptureManager.getCaptureSize()
+            put("screenCapture", JSONObject().apply {
+                put("active", ScreenCaptureManager.isActive())
+                put("width", captureWidth)
+                put("height", captureHeight)
+            })
         }
         status.put("device", deviceStatus)
         
@@ -953,6 +959,64 @@ class HttpServerModule(private val reactContext: ReactApplicationContext) :
                     put("command", command)
                     put("key", key)
                     put("keyCode", keyCode)
+                }
+            }
+            "remoteTap" -> {
+                val x = params?.optInt("x", -1) ?: -1
+                val y = params?.optInt("y", -1) ?: -1
+                if (x < 0 || y < 0) {
+                    return JSONObject().apply {
+                        put("executed", false)
+                        put("command", command)
+                        put("error", "x and y coordinates are required")
+                    }
+                }
+                if (!FreeKioskAccessibilityService.isRunning()) {
+                    return JSONObject().apply {
+                        put("executed", false)
+                        put("command", command)
+                        put("error", "Accessibility service is not running")
+                    }
+                }
+                val ok = FreeKioskAccessibilityService.tapAt(x, y)
+                return JSONObject().apply {
+                    put("executed", ok)
+                    put("success", ok)
+                    put("command", command)
+                    put("x", x)
+                    put("y", y)
+                }
+            }
+            "remoteSwipe" -> {
+                val x1 = params?.optInt("x1", -1) ?: -1
+                val y1 = params?.optInt("y1", -1) ?: -1
+                val x2 = params?.optInt("x2", -1) ?: -1
+                val y2 = params?.optInt("y2", -1) ?: -1
+                val duration = params?.optLong("duration", 300) ?: 300
+                if (x1 < 0 || y1 < 0 || x2 < 0 || y2 < 0) {
+                    return JSONObject().apply {
+                        put("executed", false)
+                        put("command", command)
+                        put("error", "x1, y1, x2, and y2 coordinates are required")
+                    }
+                }
+                if (!FreeKioskAccessibilityService.isRunning()) {
+                    return JSONObject().apply {
+                        put("executed", false)
+                        put("command", command)
+                        put("error", "Accessibility service is not running")
+                    }
+                }
+                val ok = FreeKioskAccessibilityService.swipeAt(x1, y1, x2, y2, duration)
+                return JSONObject().apply {
+                    put("executed", ok)
+                    put("success", ok)
+                    put("command", command)
+                    put("x1", x1)
+                    put("y1", y1)
+                    put("x2", x2)
+                    put("y2", y2)
+                    put("duration", duration)
                 }
             }
             "keyboardKey" -> {
