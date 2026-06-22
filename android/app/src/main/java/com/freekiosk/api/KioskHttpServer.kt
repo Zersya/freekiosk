@@ -1,9 +1,12 @@
 package com.freekiosk.api
 
+import com.freekiosk.MjpegStreamInputStream
+import com.freekiosk.ScreenCaptureManager
 import fi.iki.elonen.NanoHTTPD
 import org.json.JSONObject
 import org.json.JSONArray
 import android.util.Log
+import java.util.concurrent.atomic.AtomicBoolean
 
 /**
  * FreeKiosk REST API Server
@@ -22,6 +25,20 @@ class KioskHttpServer(
     companion object {
         private const val TAG = "KioskHttpServer"
         private const val MIME_JSON = "application/json"
+        private val streamActive = AtomicBoolean(false)
+
+        @Volatile
+        private var activeMjpegStream: MjpegStreamInputStream? = null
+
+        private fun releaseActiveMjpegStream() {
+            try {
+                activeMjpegStream?.close()
+            } catch (_: Exception) {
+                // ignore
+            }
+            activeMjpegStream = null
+            streamActive.set(false)
+        }
     }
 
     override fun serve(session: IHTTPSession): Response {
@@ -59,7 +76,9 @@ class KioskHttpServer(
         // POST-only endpoints that require a JSON body (GET on these → 405, not 404)
         val postOnlyUris = setOf(
             "/api/url", "/api/navigate", "/api/tts", "/api/toast",
-            "/api/app/launch", "/api/js", "/api/audio/play", "/api/remote/text"
+            "/api/app/launch", "/api/js", "/api/audio/play",             "/api/remote/text",
+            "/api/remote/tap",
+            "/api/remote/swipe"
         )
 
         val response = try {
@@ -76,6 +95,7 @@ class KioskHttpServer(
                 isGetOrPost && uri == "/api/storage" -> handleGetStorage()
                 isGetOrPost && uri == "/api/memory" -> handleGetMemory()
                 isGetOrPost && uri == "/api/screenshot" -> handleScreenshot()
+                isGetOrPost && uri == "/api/screenshot/stream" -> handleScreenshotStream()
                 isGetOrPost && uri == "/api/camera/list" -> handleCameraList()
                 isGetOrPost && uri == "/api/location" -> handleGetLocation()
                 isGetOrPost && uri == "/" -> handleRoot()
@@ -100,6 +120,8 @@ class KioskHttpServer(
                 method == Method.POST && uri == "/api/js" -> handleExecuteJs(session)
                 method == Method.POST && uri == "/api/audio/play" -> handleAudioPlay(session)
                 method == Method.POST && uri == "/api/remote/text" -> handleKeyboardText(session)
+                method == Method.POST && uri == "/api/remote/tap" -> handleRemoteTap(session)
+                method == Method.POST && uri == "/api/remote/swipe" -> handleRemoteSwipe(session)
 
                 // Control endpoints (accept both GET and POST for convenience)
                 isGetOrPost && uri == "/api/screen/on" -> handleScreenOn()
@@ -170,6 +192,8 @@ class KioskHttpServer(
                     put("/api/storage - Storage info")
                     put("/api/memory - Memory info")
                     put("/api/health - Health check")
+                    put("/api/screenshot - Device screenshot (PNG)")
+                    put("/api/screenshot/stream - Live MJPEG stream (requires Remote Screenshot)")
                     put("/api/camera/photo - Take photo (params: camera=front|back, quality=0-100)")
                     put("/api/camera/list - List available cameras")
                     put("/api/volume - Get current volume {level, maxLevel}")
@@ -186,6 +210,8 @@ class KioskHttpServer(
                     put("/api/js - Execute JavaScript {code: string}")
                     put("/api/audio/play - Play audio {url: string, loop: bool, volume: 0-100}")
                     put("/api/remote/text - Type text {text: string}")
+                    put("/api/remote/tap - Tap at coordinates {x: int, y: int}")
+                    put("/api/remote/swipe - Swipe between coordinates {x1, y1, x2, y2, duration?}")
                 })
                 put("GET or POST", JSONArray().apply {
                     put("/api/screen/on - Turn screen on")
@@ -546,6 +572,104 @@ class KioskHttpServer(
         } else {
             jsonError(Response.Status.SERVICE_UNAVAILABLE, "Screenshot not available")
         }
+    }
+
+    private fun handleScreenshotStream(): Response {
+        if (!ScreenCaptureManager.isActive()) {
+            return jsonError(
+                Response.Status.SERVICE_UNAVAILABLE,
+                "Screen capture is not active. Enable Remote Screenshot on the tablet."
+            )
+        }
+        if (!streamActive.compareAndSet(false, true)) {
+            Log.w(TAG, "Replacing stale MJPEG stream client")
+            releaseActiveMjpegStream()
+            if (!streamActive.compareAndSet(false, true)) {
+                return jsonError(Response.Status.CONFLICT, "Another stream client is already connected")
+            }
+        }
+
+        val stream = MjpegStreamInputStream(onClose = {
+            streamActive.set(false)
+            activeMjpegStream = null
+        })
+        activeMjpegStream = stream
+        return newChunkedResponse(
+            Response.Status.OK,
+            "multipart/x-mixed-replace; boundary=freekiosk-frame",
+            stream
+        )
+    }
+
+    private fun handleRemoteTap(session: IHTTPSession): Response {
+        checkControlAllowed()?.let { return it }
+
+        val body = parseBody(session)
+        val x = body?.optInt("x", -1) ?: -1
+        val y = body?.optInt("y", -1) ?: -1
+        if (x < 0 || y < 0) {
+            return jsonError(Response.Status.BAD_REQUEST, "JSON body with x and y is required, e.g. {\"x\": 540, \"y\": 960}")
+        }
+
+        val result = commandHandler(
+            "remoteTap",
+            JSONObject().apply {
+                put("x", x)
+                put("y", y)
+            }
+        )
+
+        if (!result.optBoolean("executed", false)) {
+            val error = result.optString("error", "Tap failed")
+            val status = if (error.contains("Accessibility", ignoreCase = true)) {
+                Response.Status.SERVICE_UNAVAILABLE
+            } else {
+                Response.Status.BAD_REQUEST
+            }
+            return jsonError(status, error)
+        }
+
+        return jsonSuccess(result)
+    }
+
+    private fun handleRemoteSwipe(session: IHTTPSession): Response {
+        checkControlAllowed()?.let { return it }
+
+        val body = parseBody(session)
+        val x1 = body?.optInt("x1", -1) ?: -1
+        val y1 = body?.optInt("y1", -1) ?: -1
+        val x2 = body?.optInt("x2", -1) ?: -1
+        val y2 = body?.optInt("y2", -1) ?: -1
+        val duration = body?.optLong("duration", 300) ?: 300
+        if (x1 < 0 || y1 < 0 || x2 < 0 || y2 < 0) {
+            return jsonError(
+                Response.Status.BAD_REQUEST,
+                "JSON body with x1, y1, x2, y2 is required, e.g. {\"x1\": 540, \"y1\": 960, \"x2\": 540, \"y2\": 400}"
+            )
+        }
+
+        val result = commandHandler(
+            "remoteSwipe",
+            JSONObject().apply {
+                put("x1", x1)
+                put("y1", y1)
+                put("x2", x2)
+                put("y2", y2)
+                put("duration", duration)
+            }
+        )
+
+        if (!result.optBoolean("executed", false)) {
+            val error = result.optString("error", "Swipe failed")
+            val status = if (error.contains("Accessibility", ignoreCase = true)) {
+                Response.Status.SERVICE_UNAVAILABLE
+            } else {
+                Response.Status.BAD_REQUEST
+            }
+            return jsonError(status, error)
+        }
+
+        return jsonSuccess(result)
     }
 
     private fun handleAudioPlay(session: IHTTPSession): Response {

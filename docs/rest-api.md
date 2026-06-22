@@ -91,7 +91,7 @@ Returns complete device status in one call.
     "battery": { "level": 85, "charging": true, "temperature": 25.5 },
     "screen": { "on": true, "brightness": 75, "screensaverActive": false },
     "webview": { "currentUrl": "http://...", "canGoBack": false, "loading": false },
-    "device": { "model": "SM-T510", "manufacturer": "samsung", "android": "11" },
+    "device": { "model": "SM-T510", "manufacturer": "samsung", "android": "11", "screenCapture": { "active": true, "width": 1920, "height": 1200 } },
     "wifi": { "connected": true, "ssid": "Home", "rssi": -45, "ip": "192.168.1.50" },
     "sensors": { "light": 150.5, "proximity": 5, "accelerometer": {...} },
     "autoBrightness": { "enabled": true, "min": 10, "max": 100, "currentLightLevel": 150.5 },
@@ -362,6 +362,26 @@ curl http://TABLET_IP:8080/api/screenshot -o screenshot.png
 
 
 > 💡 For MDM / remote monitoring of native apps in Multi-App mode, enable **Remote Screenshot** in settings or provision the device as Device Owner. Without either, only the FreeKiosk launcher/WebView is captured.
+
+#### `GET /api/screenshot/stream`
+
+Returns a live MJPEG stream (`multipart/x-mixed-replace`) of the device screen at ~3–5 fps.
+
+**Requirements:** Remote Screenshot (MediaProjection) must be active. Returns `503` if screen capture is not running. Only one stream client is allowed at a time (`409` if another client is connected).
+
+**Response**: `multipart/x-mixed-replace; boundary=freekiosk-frame`
+
+**Usage examples:**
+
+```bash
+# Stream to file (Ctrl+C to stop)
+curl -N http://TABLET_IP:8080/api/screenshot/stream -o stream.mjpeg
+
+# Display in HTML (browser must support MJPEG)
+<img src="http://TABLET_IP:8080/api/screenshot/stream" />
+```
+
+> 💡 The stream stops automatically if MediaProjection consent is revoked or Remote Screenshot is disabled.
 
 #### `GET /api/camera/photo`
 
@@ -741,6 +761,32 @@ Response:
   }
 }
 ```
+
+#### Tap at Coordinates: `POST /api/remote/tap`
+
+Simulate a touch tap at device pixel coordinates. Requires **Accessibility Service** enabled and **Allow Remote Control** on.
+
+```bash
+curl -X POST http://tablet-ip:8080/api/remote/tap \
+  -H "Content-Type: application/json" \
+  -d '{"x": 540, "y": 960}'
+```
+
+Response:
+```json
+{
+  "success": true,
+  "data": {
+    "executed": true,
+    "success": true,
+    "command": "remoteTap",
+    "x": 540,
+    "y": 960
+  }
+}
+```
+
+Returns `503` if the Accessibility Service is not running.
 
 > #### Accessibility Service (recommended for External App mode)
 >
