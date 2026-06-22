@@ -43,6 +43,7 @@ import android.os.Build
 import com.freekiosk.DeviceAdminReceiver
 import com.freekiosk.CameraPhotoModule
 import com.freekiosk.FreeKioskAccessibilityService
+import com.freekiosk.ScreenCaptureManager
 import com.freekiosk.ScreenController
 import org.json.JSONObject
 import java.io.ByteArrayInputStream
@@ -53,6 +54,7 @@ import java.util.Locale
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.TimeUnit
 import android.content.ComponentName
+import androidx.annotation.RequiresApi
 
 /**
  * React Native Module for HTTP Server management
@@ -1912,13 +1914,27 @@ class HttpServerModule(private val reactContext: ReactApplicationContext) :
         }
 
         val adminComponent = ComponentName(reactContext, DeviceAdminReceiver::class.java)
+        return captureDeviceOwnerScreenshotInternal(dpm, adminComponent)
+    }
+
+    @RequiresApi(Build.VERSION_CODES.R)
+    private fun captureDeviceOwnerScreenshotInternal(
+        dpm: android.app.admin.DevicePolicyManager,
+        adminComponent: ComponentName
+    ): ByteArrayInputStream? {
         var screenshot: ByteArrayInputStream? = null
         val latch = CountDownLatch(1)
 
         try {
-            dpm.takeScreenshot(adminComponent, reactContext.mainExecutor) { screenshotResult ->
+            val takeScreenshotMethod = dpm.javaClass.getMethod(
+                "takeScreenshot",
+                ComponentName::class.java,
+                java.util.concurrent.Executor::class.java,
+                java.util.function.Consumer::class.java
+            )
+            val callback = java.util.function.Consumer<Any> { screenshotResult ->
                 try {
-                    val bitmap = screenshotResult.bitmap
+                    val bitmap = screenshotResult.javaClass.getMethod("getBitmap").invoke(screenshotResult) as? Bitmap
                     if (bitmap != null && !bitmap.isRecycled) {
                         screenshot = bitmapToPngStream(bitmap)
                     } else {
@@ -1930,12 +1946,13 @@ class HttpServerModule(private val reactContext: ReactApplicationContext) :
                     latch.countDown()
                 }
             }
+            takeScreenshotMethod.invoke(dpm, adminComponent, reactContext.mainExecutor, callback)
 
             if (!latch.await(10, TimeUnit.SECONDS)) {
                 Log.w(TAG, "DPM takeScreenshot timed out")
             }
         } catch (e: Exception) {
-            Log.e(TAG, "DPM takeScreenshot failed: ${e.message}", e)
+            Log.w(TAG, "DPM takeScreenshot not available: ${e.message}")
             if (latch.count > 0) {
                 latch.countDown()
             }

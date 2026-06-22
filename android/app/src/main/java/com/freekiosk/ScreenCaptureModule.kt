@@ -97,7 +97,7 @@ class ScreenCaptureModule(private val reactContext: ReactApplicationContext) :
         }
     }
 
-    override fun onNewIntent(intent: Intent?) {
+    override fun onNewIntent(intent: Intent) {
         // No-op
     }
 }
