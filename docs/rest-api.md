@@ -340,6 +340,12 @@ Simple health check.
 
 Returns a PNG image of the current screen.
 
+**Capture methods (tried in order):**
+
+1. **MediaProjection** — full display including external/native apps. Requires enabling **Remote Screenshot** once in FreeKiosk Settings → REST API (system consent dialog). A low-priority notification is shown while active.
+2. **Device Owner** (`DevicePolicyManager.takeScreenshot`, Android 11+) — full display when FreeKiosk is provisioned as Device Owner via ADB.
+3. **View capture (fallback)** — FreeKiosk window only (dashboard, WebView, screensaver). External apps in Multi-App mode appear as the launcher background.
+
 **Response**: `image/png` binary data
 
 **Usage examples:**
@@ -355,7 +361,7 @@ curl http://TABLET_IP:8080/api/screenshot -o screenshot.png
 
 
 
-> 💡 The screenshot is captured from the app's root view. It works even when the screensaver overlay is active.
+> 💡 For MDM / remote monitoring of native apps in Multi-App mode, enable **Remote Screenshot** in settings or provision the device as Device Owner. Without either, only the FreeKiosk launcher/WebView is captured.
 
 #### `GET /api/camera/photo`
 

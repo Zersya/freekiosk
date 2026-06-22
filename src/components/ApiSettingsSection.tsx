@@ -19,6 +19,7 @@ import SettingsInput from './settings/SettingsInput';
 import Icon from './Icon';
 import { StorageService } from '../utils/storage';
 import { httpServer } from '../utils/HttpServerModule';
+import { screenCapture } from '../utils/ScreenCaptureModule';
 
 interface ApiSettingsSectionProps {
   onSettingsChanged?: () => void;
@@ -31,6 +32,8 @@ export const ApiSettingsSection: React.FC<ApiSettingsSectionProps> = ({
   const [apiPort, setApiPort] = useState('8080');
   const [apiKey, setApiKey] = useState('');
   const [allowControl, setAllowControl] = useState(true);
+  const [remoteScreenshot, setRemoteScreenshot] = useState(false);
+  const [remoteScreenshotActive, setRemoteScreenshotActive] = useState(false);
   const [serverRunning, setServerRunning] = useState(false);
   const [localIp, setLocalIp] = useState('0.0.0.0');
   const [isLoading, setIsLoading] = useState(false);
@@ -49,6 +52,8 @@ export const ApiSettingsSection: React.FC<ApiSettingsSectionProps> = ({
         const info = await httpServer.getServerInfo();
         setLocalIp(info.ip);
       }
+      const captureActive = await screenCapture.isActive();
+      setRemoteScreenshotActive(captureActive);
     };
 
     checkStatus();
@@ -57,17 +62,26 @@ export const ApiSettingsSection: React.FC<ApiSettingsSectionProps> = ({
   }, []);
 
   const loadSettings = async () => {
-    const [enabled, port, key, control] = await Promise.all([
+    const [enabled, port, key, control, remoteShot] = await Promise.all([
       StorageService.getRestApiEnabled(),
       StorageService.getRestApiPort(),
       StorageService.getRestApiKey(),
       StorageService.getRestApiAllowControl(),
+      StorageService.getRestApiRemoteScreenshot(),
     ]);
 
     setApiEnabled(enabled);
     setApiPort(port.toString());
     setApiKey(key);
     setAllowControl(control);
+    setRemoteScreenshot(remoteShot);
+    const active = await screenCapture.isActive();
+    setRemoteScreenshotActive(active);
+    if (remoteShot && !active) {
+      // Preference saved but MediaProjection was stopped (e.g. by kiosk mode) — user must re-enable.
+      await StorageService.saveRestApiRemoteScreenshot(false);
+      setRemoteScreenshot(false);
+    }
 
     // Always sync server state with stored settings.
     // If the server is already running (started by KioskScreen) but with a stale config
@@ -170,6 +184,43 @@ export const ApiSettingsSection: React.FC<ApiSettingsSectionProps> = ({
       await startServer(port, apiKey, value);
     }
     
+    onSettingsChanged?.();
+  };
+
+  const handleRemoteScreenshotChange = async (value: boolean) => {
+    if (value) {
+      try {
+        await screenCapture.requestPermission();
+        setRemoteScreenshot(true);
+        setRemoteScreenshotActive(true);
+        await StorageService.saveRestApiRemoteScreenshot(true);
+        Alert.alert(
+          'Remote Screenshot Enabled',
+          'Full-screen capture is active for /api/screenshot.\n\n' +
+            '• Keep the screen-recording notification visible\n' +
+            '• Enable this before or after kiosk mode — if Live View shows only the dashboard, toggle off and on again\n' +
+            '• External apps in Multi-App mode are included when capture is active'
+        );
+      } catch (error: any) {
+        setRemoteScreenshot(false);
+        setRemoteScreenshotActive(false);
+        await StorageService.saveRestApiRemoteScreenshot(false);
+        Alert.alert(
+          'Permission Required',
+          error?.message || 'Screen capture permission was denied. Full-screen screenshots require this one-time consent.'
+        );
+      }
+    } else {
+      try {
+        await screenCapture.stop();
+      } catch (_) {
+        // ignore
+      }
+      setRemoteScreenshot(false);
+      setRemoteScreenshotActive(false);
+      await StorageService.saveRestApiRemoteScreenshot(false);
+    }
+
     onSettingsChanged?.();
   };
 
@@ -280,6 +331,19 @@ export const ApiSettingsSection: React.FC<ApiSettingsSectionProps> = ({
             onValueChange={handleAllowControlChange}
             icon="remote"
             hint="Enable POST commands (brightness, reload, etc.)"
+          />
+
+          {/* Remote Screenshot (MediaProjection) */}
+          <SettingsSwitch
+            label="Remote Screenshot (Full Screen)"
+            value={remoteScreenshotActive}
+            onValueChange={handleRemoteScreenshotChange}
+            icon="monitor-screenshot"
+            hint={
+              remoteScreenshotActive
+                ? 'Full-screen capture active — keep the screen-recording notification visible'
+                : 'Enable before starting kiosk mode, or re-enable if capture stopped. Required for external apps in Live View.'
+            }
           />
 
           {/* API Endpoints Info */}
