@@ -53,18 +53,28 @@ class ScreenCaptureService : Service() {
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         when (intent?.action) {
             ACTION_STOP -> {
-                ScreenCaptureManager.stopProjection()
+                ScreenCaptureManager.stopProjection(this)
                 stopForeground(STOP_FOREGROUND_REMOVE)
                 stopSelf()
                 return START_NOT_STICKY
             }
             ACTION_START, null -> {
-                val resultCode = intent?.getIntExtra(EXTRA_RESULT_CODE, 0) ?: 0
+                if (intent == null) {
+                    if (ScreenCaptureManager.isActive()) {
+                        Log.d(TAG, "Service restarted — keeping active projection")
+                        startForegroundWithNotification()
+                        return START_STICKY
+                    }
+                    stopSelf()
+                    return START_NOT_STICKY
+                }
+
+                val resultCode = intent.getIntExtra(EXTRA_RESULT_CODE, 0)
                 val resultData = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-                    intent?.getParcelableExtra(EXTRA_RESULT_DATA, Intent::class.java)
+                    intent.getParcelableExtra(EXTRA_RESULT_DATA, Intent::class.java)
                 } else {
                     @Suppress("DEPRECATION")
-                    intent?.getParcelableExtra(EXTRA_RESULT_DATA)
+                    intent.getParcelableExtra(EXTRA_RESULT_DATA)
                 }
                 if (resultData == null) {
                     Log.e(TAG, "Missing MediaProjection result data")
@@ -78,7 +88,7 @@ class ScreenCaptureService : Service() {
                     ScreenCaptureManager.startProjection(this, resultCode, resultData)
                 } catch (e: Exception) {
                     Log.e(TAG, "Failed to start screen capture projection: ${e.message}", e)
-                    ScreenCaptureManager.stopProjection()
+                    ScreenCaptureManager.stopProjection(this)
                     stopForeground(STOP_FOREGROUND_REMOVE)
                     stopSelf()
                 }
@@ -89,7 +99,9 @@ class ScreenCaptureService : Service() {
     }
 
     override fun onDestroy() {
-        ScreenCaptureManager.stopProjection()
+        if (!ScreenCaptureManager.isActive()) {
+            ScreenCaptureManager.stopProjection(applicationContext)
+        }
         super.onDestroy()
     }
 

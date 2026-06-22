@@ -75,7 +75,13 @@ export const ApiSettingsSection: React.FC<ApiSettingsSectionProps> = ({
     setApiKey(key);
     setAllowControl(control);
     setRemoteScreenshot(remoteShot);
-    setRemoteScreenshotActive(await screenCapture.isActive());
+    const active = await screenCapture.isActive();
+    setRemoteScreenshotActive(active);
+    if (remoteShot && !active) {
+      // Preference saved but MediaProjection was stopped (e.g. by kiosk mode) — user must re-enable.
+      await StorageService.saveRestApiRemoteScreenshot(false);
+      setRemoteScreenshot(false);
+    }
 
     // Always sync server state with stored settings.
     // If the server is already running (started by KioskScreen) but with a stale config
@@ -190,7 +196,10 @@ export const ApiSettingsSection: React.FC<ApiSettingsSectionProps> = ({
         await StorageService.saveRestApiRemoteScreenshot(true);
         Alert.alert(
           'Remote Screenshot Enabled',
-          'Full-screen capture is active for /api/screenshot, including external apps in Multi-App mode. A notification will remain visible while active.'
+          'Full-screen capture is active for /api/screenshot.\n\n' +
+            '• Keep the screen-recording notification visible\n' +
+            '• Enable this before or after kiosk mode — if Live View shows only the dashboard, toggle off and on again\n' +
+            '• External apps in Multi-App mode are included when capture is active'
         );
       } catch (error: any) {
         setRemoteScreenshot(false);
@@ -327,13 +336,13 @@ export const ApiSettingsSection: React.FC<ApiSettingsSectionProps> = ({
           {/* Remote Screenshot (MediaProjection) */}
           <SettingsSwitch
             label="Remote Screenshot (Full Screen)"
-            value={remoteScreenshot && remoteScreenshotActive}
+            value={remoteScreenshotActive}
             onValueChange={handleRemoteScreenshotChange}
             icon="monitor-screenshot"
             hint={
-              remoteScreenshot && !remoteScreenshotActive
-                ? 'Permission expired — toggle on to re-enable full-screen capture'
-                : 'Capture external/native apps via /api/screenshot (one-time system consent)'
+              remoteScreenshotActive
+                ? 'Full-screen capture active — keep the screen-recording notification visible'
+                : 'Enable before starting kiosk mode, or re-enable if capture stopped. Required for external apps in Live View.'
             }
           />
 

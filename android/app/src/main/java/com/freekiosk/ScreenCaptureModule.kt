@@ -64,7 +64,7 @@ class ScreenCaptureModule(private val reactContext: ReactApplicationContext) :
     fun stopScreenCapture(promise: Promise) {
         try {
             ScreenCaptureService.stop(reactContext)
-            ScreenCaptureManager.stopProjection()
+            ScreenCaptureManager.stopProjection(reactContext)
             promise.resolve(true)
         } catch (e: Exception) {
             promise.reject("STOP_FAILED", "Failed to stop screen capture: ${e.message}")
@@ -89,7 +89,8 @@ class ScreenCaptureModule(private val reactContext: ReactApplicationContext) :
         }
 
         try {
-            ScreenCaptureService.start(reactContext, resultCode, data)
+            val projectionData = Intent(data)
+            ScreenCaptureService.start(reactContext, resultCode, projectionData)
             promise.resolve(true)
         } catch (e: Exception) {
             Log.e(TAG, "Failed to start screen capture service: ${e.message}", e)
