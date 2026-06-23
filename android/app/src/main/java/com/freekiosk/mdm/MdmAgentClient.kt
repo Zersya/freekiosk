@@ -11,7 +11,9 @@ import android.os.Handler
 import android.os.Looper
 import android.os.PowerManager
 import android.provider.Settings
+import android.util.Base64
 import android.util.Log
+import com.freekiosk.ScreenCaptureManager
 import com.freekiosk.api.HttpServerModule
 import okhttp3.OkHttpClient
 import okhttp3.Request
@@ -48,6 +50,9 @@ class MdmAgentClient(private val context: Context) {
     private var wifiLock: WifiManager.WifiLock? = null
     private var cpuWakeLock: PowerManager.WakeLock? = null
     private var networkCallback: ConnectivityManager.NetworkCallback? = null
+
+    private var activeStreamSessionId: String? = null
+    private var streamRunnable: Runnable? = null
 
     var onConnectionChanged: ((Boolean) -> Unit)? = null
     var onError: ((String) -> Unit)? = null
@@ -93,6 +98,7 @@ class MdmAgentClient(private val context: Context) {
         isConnected = false
         mainHandler.removeCallbacks(statusRunnable)
         mainHandler.removeCallbacks(reconnectRunnable)
+        stopStreaming()
         webSocket?.close(1000, "Client disconnect")
         webSocket = null
         releaseLocks()
@@ -138,6 +144,7 @@ class MdmAgentClient(private val context: Context) {
         isConnected = false
         sessionReady.set(false)
         mainHandler.removeCallbacks(statusRunnable)
+        stopStreaming()
         onConnectionChanged?.invoke(false)
         if (!disconnectRequested.get()) {
             scheduleReconnect()
@@ -164,7 +171,7 @@ class MdmAgentClient(private val context: Context) {
                 put("type", "enroll")
                 put("enrollmentToken", enrollmentToken)
                 put("deviceKey", deviceKey)
-                put("capabilities", org.json.JSONArray(listOf("status", "commands")))
+                put("capabilities", org.json.JSONArray(listOf("status", "commands", "stream")))
                 put("info", JSONObject().apply {
                     put("name", Build.MODEL)
                     put("model", Build.MODEL)
@@ -178,7 +185,7 @@ class MdmAgentClient(private val context: Context) {
                 put("deviceId", deviceId)
                 put("agentToken", agentToken)
                 put("protocolVersion", PROTOCOL_VERSION)
-                put("capabilities", org.json.JSONArray(listOf("status", "commands")))
+                put("capabilities", org.json.JSONArray(listOf("status", "commands", "stream")))
             }
         } else {
             onError?.invoke("MDM agent is not enrolled")
@@ -215,6 +222,8 @@ class MdmAgentClient(private val context: Context) {
                     mainHandler.postDelayed(statusRunnable, STATUS_INTERVAL_MS)
                 }
                 "command" -> handleCommand(message)
+                "stream_start" -> handleStreamStart(message)
+                "stream_stop" -> handleStreamStop(message)
                 "error" -> onError?.invoke(message.optString("message", "Agent error"))
                 "pong", "status_ack" -> Unit
             }
@@ -248,6 +257,63 @@ class MdmAgentClient(private val context: Context) {
             }
         }
         webSocket?.send(response.toString())
+    }
+
+    private fun handleStreamStart(message: JSONObject) {
+        val sessionId = message.optString("sessionId", "")
+        if (sessionId.isBlank()) return
+
+        val fps = message.optInt("fps", 4).coerceIn(1, 10)
+        val quality = message.optInt("quality", 60).coerceIn(1, 100)
+        val intervalMs = (1000L / fps).coerceAtLeast(100L)
+
+        stopStreaming()
+        activeStreamSessionId = sessionId
+
+        val runnable = object : Runnable {
+            override fun run() {
+                if (activeStreamSessionId != sessionId) return
+                val socket = webSocket ?: return
+                if (!sessionReady.get()) return
+
+                if (!ScreenCaptureManager.isActive()) {
+                    Log.w(TAG, "stream_start ignored — screen capture is not active")
+                    mainHandler.postDelayed(this, intervalMs)
+                    return
+                }
+
+                val jpeg = ScreenCaptureManager.getLatestJpegBytes(quality)
+                if (jpeg != null && jpeg.isNotEmpty()) {
+                    val payload = JSONObject().apply {
+                        put("type", "stream_frame")
+                        put("sessionId", sessionId)
+                        put("timestamp", System.currentTimeMillis() / 1000)
+                        put("contentType", "image/jpeg")
+                        put("data", Base64.encodeToString(jpeg, Base64.NO_WRAP))
+                    }
+                    socket.send(payload.toString())
+                }
+
+                mainHandler.postDelayed(this, intervalMs)
+            }
+        }
+
+        streamRunnable = runnable
+        mainHandler.post(runnable)
+        Log.i(TAG, "Started agent stream session $sessionId at ${fps}fps")
+    }
+
+    private fun handleStreamStop(message: JSONObject) {
+        val sessionId = message.optString("sessionId", "")
+        if (sessionId.isBlank() || sessionId == activeStreamSessionId) {
+            stopStreaming()
+        }
+    }
+
+    private fun stopStreaming() {
+        streamRunnable?.let { mainHandler.removeCallbacks(it) }
+        streamRunnable = null
+        activeStreamSessionId = null
     }
 
     private fun publishStatus() {
