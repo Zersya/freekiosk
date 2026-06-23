@@ -77,7 +77,7 @@ class FreeKioskAccessibilityService : AccessibilityService() {
 
             val result = AtomicBoolean(false)
             val latch = CountDownLatch(1)
-            Handler(Looper.getMainLooper()).post {
+            Handler(Looper.getMainLooper()).postAtFrontOfQueue {
                 try {
                     result.set(tapAtGesture(service, x.toFloat(), y.toFloat()))
                 } finally {
@@ -86,7 +86,7 @@ class FreeKioskAccessibilityService : AccessibilityService() {
             }
 
             return try {
-                latch.await(5, TimeUnit.SECONDS) && result.get()
+                latch.await(15, TimeUnit.SECONDS) && result.get()
             } catch (e: InterruptedException) {
                 Log.w(TAG, "tapAt interrupted: ${e.message}")
                 false
@@ -107,7 +107,7 @@ class FreeKioskAccessibilityService : AccessibilityService() {
 
             val result = AtomicBoolean(false)
             val latch = CountDownLatch(1)
-            Handler(Looper.getMainLooper()).post {
+            Handler(Looper.getMainLooper()).postAtFrontOfQueue {
                 try {
                     result.set(swipeAtGesture(service, x1.toFloat(), y1.toFloat(), x2.toFloat(), y2.toFloat(), durationMs))
                 } finally {
@@ -116,7 +116,7 @@ class FreeKioskAccessibilityService : AccessibilityService() {
             }
 
             return try {
-                latch.await(5, TimeUnit.SECONDS) && result.get()
+                latch.await(15, TimeUnit.SECONDS) && result.get()
             } catch (e: InterruptedException) {
                 Log.w(TAG, "swipeAt interrupted: ${e.message}")
                 false
@@ -528,34 +528,17 @@ class FreeKioskAccessibilityService : AccessibilityService() {
                     .addStroke(GestureDescription.StrokeDescription(path, 0, duration))
                     .build()
 
-                val completed = AtomicBoolean(false)
-                val latch = CountDownLatch(1)
                 val mainHandler = Handler(Looper.getMainLooper())
 
-                val queued = service.dispatchGesture(
-                    gesture,
-                    object : GestureResultCallback() {
-                        override fun onCompleted(gestureDescription: GestureDescription?) {
-                            completed.set(true)
-                            latch.countDown()
-                        }
-
-                        override fun onCancelled(gestureDescription: GestureDescription?) {
-                            latch.countDown()
-                        }
-                    },
-                    mainHandler
-                )
+                val queued = service.dispatchGesture(gesture, null, mainHandler)
 
                 if (!queued) {
                     Log.w(TAG, "Swipe gesture not queued ($x1,$y1)->($x2,$y2)")
                     return false
                 }
 
-                latch.await(5, TimeUnit.SECONDS)
-                val ok = completed.get() || queued
-                Log.d(TAG, "Swipe gesture ($x1,$y1)->($x2,$y2): queued=$queued, completed=${completed.get()}")
-                return ok
+                Log.d(TAG, "Swipe gesture queued ($x1,$y1)->($x2,$y2)")
+                return true
             } catch (e: Exception) {
                 Log.w(TAG, "Swipe gesture failed: ${e.message}")
                 return false
@@ -573,34 +556,17 @@ class FreeKioskAccessibilityService : AccessibilityService() {
                     .addStroke(GestureDescription.StrokeDescription(path, 0, 100))
                     .build()
 
-                val completed = AtomicBoolean(false)
-                val latch = CountDownLatch(1)
                 val mainHandler = Handler(Looper.getMainLooper())
 
-                val queued = service.dispatchGesture(
-                    gesture,
-                    object : GestureResultCallback() {
-                        override fun onCompleted(gestureDescription: GestureDescription?) {
-                            completed.set(true)
-                            latch.countDown()
-                        }
-
-                        override fun onCancelled(gestureDescription: GestureDescription?) {
-                            latch.countDown()
-                        }
-                    },
-                    mainHandler
-                )
+                val queued = service.dispatchGesture(gesture, null, mainHandler)
 
                 if (!queued) {
                     Log.w(TAG, "Tap gesture not queued at ($x, $y)")
                     return false
                 }
 
-                latch.await(5, TimeUnit.SECONDS)
-                val ok = completed.get() || queued
-                Log.d(TAG, "Tap gesture at ($x, $y): queued=$queued, completed=${completed.get()}")
-                return ok
+                Log.d(TAG, "Tap gesture queued at ($x, $y)")
+                return true
             } catch (e: Exception) {
                 Log.w(TAG, "Tap gesture failed: ${e.message}")
                 return false

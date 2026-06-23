@@ -81,6 +81,9 @@ class BootReceiver : BroadcastReceiver() {
             // Re-enable accessibility service if Device Owner (includes managed apps whitelist)
             reEnableAccessibilityIfDeviceOwner(context)
 
+            // Outbound MDM agent — independent of auto-launch / kiosk
+            startMdmAgentIfEnabled(context)
+
             // Check if auto-launch is enabled before doing anything else
             if (!isAutoLaunchEnabled(context)) {
                 DebugLog.d("BootReceiver", "Auto-launch is disabled, not starting app")
@@ -192,6 +195,17 @@ class BootReceiver : BroadcastReceiver() {
      * Start KioskWatchdogService if kiosk mode is enabled (#96).
      * The service uses START_STICKY so Android restarts it after OOM kills.
      */
+    private fun startMdmAgentIfEnabled(context: Context) {
+        if (!com.freekiosk.mdm.MdmAgentPrefs.isEnabled(context)) return
+        if (com.freekiosk.mdm.MdmAgentPrefs.getWsUrl(context).isNullOrBlank()) return
+        try {
+            com.freekiosk.mdm.MdmAgentService.start(context)
+            DebugLog.d("BootReceiver", "MdmAgentService started")
+        } catch (e: Exception) {
+            DebugLog.errorProduction("BootReceiver", "Failed to start MdmAgentService: ${e.message}")
+        }
+    }
+
     private fun startKioskWatchdogIfNeeded(context: Context) {
         if (!isKioskEnabled(context)) return
         try {

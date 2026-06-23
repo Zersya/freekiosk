@@ -131,6 +131,9 @@ class MainActivity : ReactActivity() {
     // Start KioskWatchdogService (#96) — survives OOM kills via START_STICKY
     startKioskWatchdogIfNeeded()
 
+    // Outbound MDM agent (GSM / no inbound reachability)
+    startMdmAgentIfNeeded()
+
     // If started from HomeActivity (External App Mode at boot),
     // move to background so the external app stays in foreground
     if (intent?.getBooleanExtra("from_home_activity", false) == true) {
@@ -1111,6 +1114,17 @@ class MainActivity : ReactActivity() {
       DebugLog.d("MainActivity", "KioskWatchdogService started")
     } catch (e: Exception) {
       DebugLog.d("MainActivity", "Error starting KioskWatchdogService: ${e.message}")
+    }
+  }
+
+  private fun startMdmAgentIfNeeded() {
+    try {
+      if (!com.freekiosk.mdm.MdmAgentPrefs.isEnabled(this)) return
+      if (com.freekiosk.mdm.MdmAgentPrefs.getWsUrl(this).isNullOrBlank()) return
+      com.freekiosk.mdm.MdmAgentService.start(this)
+      DebugLog.d("MainActivity", "MdmAgentService started")
+    } catch (e: Exception) {
+      DebugLog.d("MainActivity", "Error starting MdmAgentService: ${e.message}")
     }
   }
 

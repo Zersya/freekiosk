@@ -12,6 +12,7 @@ import {
   Alert,
   Clipboard,
   ActivityIndicator,
+  Platform,
 } from 'react-native';
 import SettingsSection from './settings/SettingsSection';
 import SettingsSwitch from './settings/SettingsSwitch';
@@ -20,6 +21,7 @@ import Icon from './Icon';
 import { StorageService } from '../utils/storage';
 import { httpServer } from '../utils/HttpServerModule';
 import { screenCapture } from '../utils/ScreenCaptureModule';
+import { mdmAgent } from '../utils/MdmAgentModule';
 
 interface ApiSettingsSectionProps {
   onSettingsChanged?: () => void;
@@ -38,6 +40,15 @@ export const ApiSettingsSection: React.FC<ApiSettingsSectionProps> = ({
   const [localIp, setLocalIp] = useState('0.0.0.0');
   const [isLoading, setIsLoading] = useState(false);
 
+  // MDM outbound agent
+  const [mdmEnabled, setMdmEnabled] = useState(false);
+  const [mdmWsUrl, setMdmWsUrl] = useState('');
+  const [mdmEnrollToken, setMdmEnrollToken] = useState('');
+  const [mdmConnected, setMdmConnected] = useState(false);
+  const [mdmDeviceId, setMdmDeviceId] = useState(0);
+  const [mdmEnrolled, setMdmEnrolled] = useState(false);
+  const [mdmLoading, setMdmLoading] = useState(false);
+
   // Load settings on mount
   useEffect(() => {
     loadSettings();
@@ -54,6 +65,15 @@ export const ApiSettingsSection: React.FC<ApiSettingsSectionProps> = ({
       }
       const captureActive = await screenCapture.isActive();
       setRemoteScreenshotActive(captureActive);
+
+      if (Platform.OS === 'android') {
+        const info = await mdmAgent.getAgentInfo();
+        setMdmEnabled(info.enabled);
+        setMdmWsUrl(info.wsUrl || '');
+        setMdmConnected(info.connected);
+        setMdmDeviceId(info.deviceId);
+        setMdmEnrolled(info.enrolled);
+      }
     };
 
     checkStatus();
@@ -243,7 +263,58 @@ export const ApiSettingsSection: React.FC<ApiSettingsSectionProps> = ({
     return `http://${localIp}:${port}`;
   };
 
+  const handleMdmEnabledChange = async (enabled: boolean) => {
+    if (Platform.OS !== 'android') return;
+
+    setMdmLoading(true);
+    try {
+      if (enabled) {
+        if (!mdmWsUrl.trim()) {
+          Alert.alert('MDM URL required', 'Enter the MDM WebSocket URL (wss://your-mdm/api/agent/ws).');
+          return;
+        }
+        await mdmAgent.configure(mdmWsUrl.trim(), mdmEnrollToken.trim() || null);
+        await mdmAgent.startAgent();
+      } else {
+        await mdmAgent.stopAgent();
+      }
+      const info = await mdmAgent.getAgentInfo();
+      setMdmEnabled(info.enabled);
+      setMdmConnected(info.connected);
+      setMdmDeviceId(info.deviceId);
+      setMdmEnrolled(info.enrolled);
+      onSettingsChanged?.();
+    } catch (error: any) {
+      Alert.alert('MDM Agent', error?.message || 'Failed to update MDM agent');
+    } finally {
+      setMdmLoading(false);
+    }
+  };
+
+  const handleMdmWsUrlChange = async (value: string) => {
+    setMdmWsUrl(value);
+    if (Platform.OS !== 'android') return;
+    try {
+      await mdmAgent.configure(value.trim(), mdmEnrollToken.trim() || null);
+    } catch (_) {
+      // ignore while typing
+    }
+  };
+
+  const handleMdmEnrollTokenChange = async (value: string) => {
+    setMdmEnrollToken(value);
+    if (Platform.OS !== 'android') return;
+    try {
+      await mdmAgent.configure(mdmWsUrl.trim(), value.trim() || null);
+    } catch (_) {
+      // ignore while typing
+    }
+  };
+
+  const mdmStatusColor = mdmConnected ? '#4CAF50' : mdmEnabled ? '#FF9800' : '#9E9E9E';
+
   return (
+    <>
     <SettingsSection
       title="REST API"
       icon="api"
@@ -415,6 +486,70 @@ export const ApiSettingsSection: React.FC<ApiSettingsSectionProps> = ({
         </>
       )}
     </SettingsSection>
+
+    {Platform.OS === 'android' && (
+      <SettingsSection
+        title="MDM Agent (Outbound)"
+        icon="cloud-sync"
+      >
+        <SettingsSwitch
+          label="Connect to MDM"
+          value={mdmEnabled}
+          onValueChange={handleMdmEnabledChange}
+          icon="lan-connect"
+          hint="For GSM tablets without inbound IP — tablet connects out to MDM over WebSocket"
+        />
+
+        <View style={styles.statusContainer}>
+          <View style={styles.statusRow}>
+            <View style={[styles.statusIndicator, { backgroundColor: mdmStatusColor }]} />
+            <Text style={styles.statusText}>
+              {mdmLoading
+                ? 'Updating…'
+                : mdmConnected
+                  ? `Connected${mdmDeviceId > 0 ? ` (device #${mdmDeviceId})` : ''}`
+                  : mdmEnabled
+                    ? 'Reconnecting…'
+                    : 'Disconnected'}
+            </Text>
+            {mdmLoading && <ActivityIndicator size="small" color="#007AFF" style={styles.loader} />}
+          </View>
+          {mdmEnrolled && (
+            <Text style={styles.mdmEnrolledText}>Enrolled — enrollment token cleared after first connect</Text>
+          )}
+        </View>
+
+        <SettingsInput
+          label="MDM WebSocket URL"
+          value={mdmWsUrl}
+          onChangeText={handleMdmWsUrlChange}
+          placeholder="wss://mdm.example.com/api/agent/ws"
+          icon="web"
+          hint="Generate an enrollment token in FreeKiosk MDM → Settings"
+          autoCapitalize="none"
+        />
+
+        {!mdmEnrolled && (
+          <SettingsInput
+            label="Enrollment Token"
+            value={mdmEnrollToken}
+            onChangeText={handleMdmEnrollTokenChange}
+            placeholder="Paste one-time token from MDM"
+            secureTextEntry
+            icon="ticket-confirmation"
+            hint="One-time use — cleared after successful enrollment"
+          />
+        )}
+
+        <View style={styles.hintContainer}>
+          <Icon name="information" size={20} color="#1565C0" />
+          <Text style={styles.hintText}>
+            Enable REST API above so MDM can run commands. Works on cellular without VPN — the tablet initiates the connection.
+          </Text>
+        </View>
+      </SettingsSection>
+    )}
+    </>
   );
 };
 
@@ -523,5 +658,10 @@ const styles = StyleSheet.create({
     fontSize: 13,
     color: '#1565C0',
     lineHeight: 18,
+  },
+  mdmEnrolledText: {
+    marginTop: 6,
+    fontSize: 12,
+    color: '#666',
   },
 });
