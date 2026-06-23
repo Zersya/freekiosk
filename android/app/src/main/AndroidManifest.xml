@@ -9,6 +9,7 @@
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE"/>
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_SPECIAL_USE"/>
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MEDIA_PROJECTION"/>
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_DATA_SYNC"/>
     <uses-permission android:name="android.permission.PACKAGE_USAGE_STATS"
         tools:ignore="ProtectedPermissions" />
     <uses-permission android:name="android.permission.CAMERA" />
@@ -195,6 +196,13 @@
         android:enabled="true"
         android:exported="false"
         android:foregroundServiceType="mediaProjection" />
+
+      <!-- Outbound MDM agent (WebSocket to FreeKiosk MDM) -->
+      <service
+        android:name=".mdm.MdmAgentService"
+        android:enabled="true"
+        android:exported="false"
+        android:foregroundServiceType="dataSync" />
 
       <!-- Receiver for silent installation results (disabled in Play Store builds) -->
       <receiver

@@ -1,0 +1,325 @@
+package com.freekiosk.mdm
+
+import android.content.Context
+import android.net.ConnectivityManager
+import android.net.Network
+import android.net.NetworkCapabilities
+import android.net.NetworkRequest
+import android.net.wifi.WifiManager
+import android.os.Build
+import android.os.Handler
+import android.os.Looper
+import android.os.PowerManager
+import android.provider.Settings
+import android.util.Log
+import com.freekiosk.api.HttpServerModule
+import okhttp3.OkHttpClient
+import okhttp3.Request
+import okhttp3.Response
+import okhttp3.WebSocket
+import okhttp3.WebSocketListener
+import org.json.JSONObject
+import java.util.concurrent.TimeUnit
+import java.util.concurrent.atomic.AtomicBoolean
+
+class MdmAgentClient(private val context: Context) {
+
+    companion object {
+        private const val TAG = "MdmAgentClient"
+        private const val PROTOCOL_VERSION = 1
+        private const val STATUS_INTERVAL_MS = 30_000L
+    }
+
+    private val mainHandler = Handler(Looper.getMainLooper())
+    private val httpClient = OkHttpClient.Builder()
+        .pingInterval(30, TimeUnit.SECONDS)
+        .connectTimeout(20, TimeUnit.SECONDS)
+        .readTimeout(0, TimeUnit.MILLISECONDS)
+        .build()
+
+    private var webSocket: WebSocket? = null
+    private var reconnectDelayMs = 1_000L
+    private val disconnectRequested = AtomicBoolean(false)
+    private val sessionReady = AtomicBoolean(false)
+
+    @Volatile
+    private var isConnected = false
+
+    private var wifiLock: WifiManager.WifiLock? = null
+    private var cpuWakeLock: PowerManager.WakeLock? = null
+    private var networkCallback: ConnectivityManager.NetworkCallback? = null
+
+    var onConnectionChanged: ((Boolean) -> Unit)? = null
+    var onError: ((String) -> Unit)? = null
+
+    private val statusRunnable = object : Runnable {
+        override fun run() {
+            publishStatus()
+            if (!disconnectRequested.get() && sessionReady.get()) {
+                mainHandler.postDelayed(this, STATUS_INTERVAL_MS)
+            }
+        }
+    }
+
+    private val reconnectRunnable = Runnable {
+        if (!disconnectRequested.get()) {
+            connect()
+        }
+    }
+
+    fun isConnected(): Boolean = isConnected && sessionReady.get()
+
+    fun connect() {
+        if (disconnectRequested.get()) return
+
+        val wsUrl = MdmAgentPrefs.getWsUrl(context)
+        if (wsUrl.isNullOrBlank()) {
+            onError?.invoke("MDM WebSocket URL is not configured")
+            return
+        }
+
+        acquireLocks()
+        registerNetworkCallback()
+
+        val request = Request.Builder().url(wsUrl).build()
+        webSocket?.cancel()
+        webSocket = httpClient.newWebSocket(request, socketListener)
+        Log.i(TAG, "Connecting to MDM agent hub: $wsUrl")
+    }
+
+    fun disconnect() {
+        disconnectRequested.set(true)
+        sessionReady.set(false)
+        isConnected = false
+        mainHandler.removeCallbacks(statusRunnable)
+        mainHandler.removeCallbacks(reconnectRunnable)
+        webSocket?.close(1000, "Client disconnect")
+        webSocket = null
+        releaseLocks()
+        unregisterNetworkCallback()
+        onConnectionChanged?.invoke(false)
+    }
+
+    fun reconnect() {
+        disconnectRequested.set(false)
+        connect()
+    }
+
+    private val socketListener = object : WebSocketListener() {
+        override fun onOpen(webSocket: WebSocket, response: Response) {
+            Log.i(TAG, "WebSocket open")
+            isConnected = true
+            reconnectDelayMs = 1_000L
+            sendHelloOrEnroll(webSocket)
+        }
+
+        override fun onMessage(webSocket: WebSocket, text: String) {
+            handleMessage(text)
+        }
+
+        override fun onClosing(webSocket: WebSocket, code: Int, reason: String) {
+            Log.i(TAG, "WebSocket closing: $code $reason")
+            webSocket.close(code, reason)
+        }
+
+        override fun onClosed(webSocket: WebSocket, code: Int, reason: String) {
+            Log.i(TAG, "WebSocket closed: $code $reason")
+            handleDisconnect()
+        }
+
+        override fun onFailure(webSocket: WebSocket, t: Throwable, response: Response?) {
+            Log.w(TAG, "WebSocket failure: ${t.message}")
+            onError?.invoke(t.message ?: "Connection failed")
+            handleDisconnect()
+        }
+    }
+
+    private fun handleDisconnect() {
+        isConnected = false
+        sessionReady.set(false)
+        mainHandler.removeCallbacks(statusRunnable)
+        onConnectionChanged?.invoke(false)
+        if (!disconnectRequested.get()) {
+            scheduleReconnect()
+        }
+    }
+
+    private fun scheduleReconnect() {
+        mainHandler.removeCallbacks(reconnectRunnable)
+        mainHandler.postDelayed(reconnectRunnable, reconnectDelayMs)
+        reconnectDelayMs = (reconnectDelayMs * 2).coerceAtMost(30_000L)
+    }
+
+    private fun sendHelloOrEnroll(socket: WebSocket) {
+        val enrollmentToken = MdmAgentPrefs.getEnrollmentToken(context)
+        val deviceId = MdmAgentPrefs.getDeviceId(context)
+        val agentToken = MdmAgentPrefs.getAgentToken(context)
+        val deviceKey = MdmAgentPrefs.getDeviceKey(context)
+            ?: Settings.Secure.getString(context.contentResolver, Settings.Secure.ANDROID_ID).also {
+                MdmAgentPrefs.setDeviceKey(context, it)
+            }
+
+        val payload = if (!enrollmentToken.isNullOrBlank()) {
+            JSONObject().apply {
+                put("type", "enroll")
+                put("enrollmentToken", enrollmentToken)
+                put("deviceKey", deviceKey)
+                put("capabilities", org.json.JSONArray(listOf("status", "commands")))
+                put("info", JSONObject().apply {
+                    put("name", Build.MODEL)
+                    put("model", Build.MODEL)
+                    put("manufacturer", Build.MANUFACTURER)
+                    put("androidVersion", Build.VERSION.RELEASE)
+                })
+            }
+        } else if (deviceId > 0 && !agentToken.isNullOrBlank()) {
+            JSONObject().apply {
+                put("type", "hello")
+                put("deviceId", deviceId)
+                put("agentToken", agentToken)
+                put("protocolVersion", PROTOCOL_VERSION)
+                put("capabilities", org.json.JSONArray(listOf("status", "commands")))
+            }
+        } else {
+            onError?.invoke("MDM agent is not enrolled")
+            socket.close(1008, "Not enrolled")
+            return
+        }
+
+        socket.send(payload.toString())
+    }
+
+    private fun handleMessage(text: String) {
+        try {
+            val message = JSONObject(text)
+            when (message.optString("type")) {
+                "enrolled" -> {
+                    val deviceId = message.optInt("deviceId", 0)
+                    val agentToken = message.optString("agentToken", "")
+                    if (deviceId <= 0 || agentToken.isBlank()) {
+                        onError?.invoke("Invalid enroll response")
+                        return
+                    }
+                    MdmAgentPrefs.saveEnrollmentResult(context, deviceId, agentToken)
+                    sessionReady.set(true)
+                    onConnectionChanged?.invoke(true)
+                    publishStatus()
+                    mainHandler.removeCallbacks(statusRunnable)
+                    mainHandler.postDelayed(statusRunnable, STATUS_INTERVAL_MS)
+                }
+                "welcome" -> {
+                    sessionReady.set(true)
+                    onConnectionChanged?.invoke(true)
+                    publishStatus()
+                    mainHandler.removeCallbacks(statusRunnable)
+                    mainHandler.postDelayed(statusRunnable, STATUS_INTERVAL_MS)
+                }
+                "command" -> handleCommand(message)
+                "error" -> onError?.invoke(message.optString("message", "Agent error"))
+                "pong", "status_ack" -> Unit
+            }
+        } catch (e: Exception) {
+            Log.w(TAG, "Failed to parse agent message: ${e.message}")
+        }
+    }
+
+    private fun handleCommand(message: JSONObject) {
+        val requestId = message.optString("requestId", "")
+        val command = message.optString("command", "")
+        val params = message.optJSONObject("params")
+
+        val result = try {
+            HttpServerModule.dispatchCommand(command, params)
+        } catch (e: Exception) {
+            JSONObject().apply {
+                put("executed", false)
+                put("error", e.message ?: "Command failed")
+            }
+        }
+
+        val success = result.optBoolean("executed", false) && !result.has("error")
+        val response = JSONObject().apply {
+            put("type", "command_result")
+            put("requestId", requestId)
+            put("success", success)
+            put("data", result)
+            if (!success) {
+                put("error", result.optString("error", "Command failed"))
+            }
+        }
+        webSocket?.send(response.toString())
+    }
+
+    private fun publishStatus() {
+        val socket = webSocket ?: return
+        if (!sessionReady.get()) return
+
+        val status = HttpServerModule.buildDeviceStatus() ?: return
+        val payload = JSONObject().apply {
+            put("type", "status")
+            put("data", status)
+        }
+        socket.send(payload.toString())
+    }
+
+    private fun acquireLocks() {
+        try {
+            if (wifiLock == null) {
+                val wifiManager = context.applicationContext.getSystemService(Context.WIFI_SERVICE) as WifiManager
+                wifiLock = wifiManager.createWifiLock(WifiManager.WIFI_MODE_FULL_HIGH_PERF, "FreeKiosk:MdmAgent")
+                wifiLock?.acquire()
+            }
+            if (cpuWakeLock == null) {
+                val powerManager = context.getSystemService(Context.POWER_SERVICE) as PowerManager
+                cpuWakeLock = powerManager.newWakeLock(PowerManager.PARTIAL_WAKE_LOCK, "FreeKiosk:MdmAgentCPU")
+                cpuWakeLock?.acquire()
+            }
+        } catch (e: Exception) {
+            Log.w(TAG, "Failed to acquire locks: ${e.message}")
+        }
+    }
+
+    private fun releaseLocks() {
+        try {
+            wifiLock?.let { if (it.isHeld) it.release() }
+            wifiLock = null
+            cpuWakeLock?.let { if (it.isHeld) it.release() }
+            cpuWakeLock = null
+        } catch (e: Exception) {
+            Log.w(TAG, "Failed to release locks: ${e.message}")
+        }
+    }
+
+    private fun registerNetworkCallback() {
+        if (networkCallback != null) return
+        try {
+            val connectivityManager = context.getSystemService(Context.CONNECTIVITY_SERVICE) as ConnectivityManager
+            val request = NetworkRequest.Builder()
+                .addCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET)
+                .build()
+            val callback = object : ConnectivityManager.NetworkCallback() {
+                override fun onAvailable(network: Network) {
+                    if (!disconnectRequested.get() && !sessionReady.get()) {
+                        mainHandler.post { connect() }
+                    }
+                }
+            }
+            connectivityManager.registerNetworkCallback(request, callback)
+            networkCallback = callback
+        } catch (e: Exception) {
+            Log.w(TAG, "Network callback registration failed: ${e.message}")
+        }
+    }
+
+    private fun unregisterNetworkCallback() {
+        try {
+            networkCallback?.let {
+                val connectivityManager = context.getSystemService(Context.CONNECTIVITY_SERVICE) as ConnectivityManager
+                connectivityManager.unregisterNetworkCallback(it)
+            }
+        } catch (_: Exception) {
+        } finally {
+            networkCallback = null
+        }
+    }
+}

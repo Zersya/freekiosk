@@ -65,6 +65,23 @@ class HttpServerModule(private val reactContext: ReactApplicationContext) :
     companion object {
         private const val TAG = "HttpServerModule"
         private const val NAME = "HttpServerModule"
+
+        @Volatile
+        private var instance: HttpServerModule? = null
+
+        fun dispatchCommand(command: String, params: JSONObject?): JSONObject {
+            val module = instance
+            if (module == null) {
+                return JSONObject().apply {
+                    put("executed", false)
+                    put("error", "FreeKiosk app module not ready")
+                    put("command", command)
+                }
+            }
+            return module.handleCommand(command, params)
+        }
+
+        fun buildDeviceStatus(): JSONObject? = instance?.getDeviceStatus()
     }
 
     private var server: KioskHttpServer? = null
@@ -120,6 +137,7 @@ class HttpServerModule(private val reactContext: ReactApplicationContext) :
     private var ttsVoicesCache: List<Map<String, String>> = emptyList()
 
     init {
+        instance = this
         initSensors()
         initTts()
     }
@@ -2074,6 +2092,9 @@ class HttpServerModule(private val reactContext: ReactApplicationContext) :
     override fun onCatalystInstanceDestroy() {
         super.onCatalystInstanceDestroy()
         try {
+            if (instance === this) {
+                instance = null
+            }
             server?.stop()
             server = null
             releaseServerLocks()
