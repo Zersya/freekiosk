@@ -271,21 +271,31 @@ export const ApiSettingsSection: React.FC<ApiSettingsSectionProps> = ({
       if (enabled) {
         if (!mdmWsUrl.trim()) {
           Alert.alert('MDM URL required', 'Enter the MDM WebSocket URL (wss://your-mdm/api/agent/ws).');
+          await refreshMdmAgentInfo();
           return;
         }
-        await mdmAgent.configure(mdmWsUrl.trim(), mdmEnrollToken.trim() || null);
+
+        const info = await mdmAgent.getAgentInfo();
+        const enrollmentToken = mdmEnrollToken.trim();
+        if (!info.enrolled && !enrollmentToken) {
+          Alert.alert(
+            'Enrollment token required',
+            'Enter an enrollment token (e.g. debug) before connecting. Use Re-enroll if you need to enroll again.'
+          );
+          await refreshMdmAgentInfo();
+          return;
+        }
+
+        await mdmAgent.configure(mdmWsUrl.trim(), enrollmentToken || null);
         await mdmAgent.startAgent();
       } else {
         await mdmAgent.stopAgent();
       }
-      const info = await mdmAgent.getAgentInfo();
-      setMdmEnabled(info.enabled);
-      setMdmConnected(info.connected);
-      setMdmDeviceId(info.deviceId);
-      setMdmEnrolled(info.enrolled);
+      await refreshMdmAgentInfo();
       onSettingsChanged?.();
     } catch (error: any) {
       Alert.alert('MDM Agent', error?.message || 'Failed to update MDM agent');
+      await refreshMdmAgentInfo();
     } finally {
       setMdmLoading(false);
     }
@@ -306,12 +316,61 @@ export const ApiSettingsSection: React.FC<ApiSettingsSectionProps> = ({
     if (Platform.OS !== 'android') return;
     try {
       await mdmAgent.configure(mdmWsUrl.trim(), value.trim() || null);
+      if (mdmEnabled && value.trim()) {
+        await mdmAgent.stopAgent();
+        await mdmAgent.startAgent();
+        await refreshMdmAgentInfo();
+      }
     } catch (_) {
       // ignore while typing
     }
   };
 
+  const refreshMdmAgentInfo = async () => {
+    const info = await mdmAgent.getAgentInfo();
+    setMdmEnabled(info.enabled);
+    setMdmConnected(info.connected);
+    setMdmDeviceId(info.deviceId);
+    setMdmEnrolled(info.enrolled);
+  };
+
+  const handleReEnroll = () => {
+    Alert.alert(
+      'Re-enroll MDM agent',
+      'Clears saved device credentials on this tablet. Enter a new enrollment token, then turn Connect to MDM back on.',
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Re-enroll',
+          style: 'destructive',
+          onPress: async () => {
+            setMdmLoading(true);
+            try {
+              await mdmAgent.clearEnrollment();
+              setMdmEnrollToken('');
+              setMdmEnabled(false);
+              setMdmConnected(false);
+              setMdmDeviceId(0);
+              setMdmEnrolled(false);
+              await refreshMdmAgentInfo();
+              onSettingsChanged?.();
+              Alert.alert(
+                'Credentials cleared',
+                'Enter your enrollment token (debug), then turn Connect to MDM on.'
+              );
+            } catch (error: any) {
+              Alert.alert('MDM Agent', error?.message || 'Failed to clear enrollment');
+            } finally {
+              setMdmLoading(false);
+            }
+          },
+        },
+      ]
+    );
+  };
+
   const mdmStatusColor = mdmConnected ? '#4CAF50' : mdmEnabled ? '#FF9800' : '#9E9E9E';
+  const hasEnrollmentInput = Boolean(mdmEnrollToken.trim());
 
   return (
     <>
@@ -509,15 +568,30 @@ export const ApiSettingsSection: React.FC<ApiSettingsSectionProps> = ({
                 : mdmConnected
                   ? `Connected${mdmDeviceId > 0 ? ` (device #${mdmDeviceId})` : ''}`
                   : mdmEnabled
-                    ? 'Reconnecting…'
+                    ? (mdmEnrolled
+                      ? 'Reconnecting…'
+                      : (hasEnrollmentInput ? 'Connecting…' : 'Enter enrollment token below'))
                     : 'Disconnected'}
             </Text>
             {mdmLoading && <ActivityIndicator size="small" color="#007AFF" style={styles.loader} />}
           </View>
           {mdmEnrolled && (
-            <Text style={styles.mdmEnrolledText}>Enrolled — enrollment token cleared after first connect</Text>
+            <Text style={styles.mdmEnrolledText}>
+              Enrolled as device #{mdmDeviceId}. Re-enroll after server migration or token rotation.
+            </Text>
           )}
         </View>
+
+        <TouchableOpacity
+          style={styles.reEnrollButton}
+          onPress={handleReEnroll}
+          disabled={mdmLoading}
+        >
+          <Icon name="refresh" size={16} color="#C62828" />
+          <Text style={styles.reEnrollButtonText}>
+            {mdmEnrolled ? 'Re-enroll' : 'Clear credentials'}
+          </Text>
+        </TouchableOpacity>
 
         <SettingsInput
           label="MDM WebSocket URL"
@@ -534,10 +608,10 @@ export const ApiSettingsSection: React.FC<ApiSettingsSectionProps> = ({
             label="Enrollment Token"
             value={mdmEnrollToken}
             onChangeText={handleMdmEnrollTokenChange}
-            placeholder="Paste one-time token from MDM"
+            placeholder="debug"
             secureTextEntry
             icon="ticket-confirmation"
-            hint="One-time use — cleared after successful enrollment"
+            hint="Dev MDM: type debug. Production: one-time token from MDM Settings"
           />
         )}
 
@@ -663,5 +737,23 @@ const styles = StyleSheet.create({
     marginTop: 6,
     fontSize: 12,
     color: '#666',
+  },
+  reEnrollButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    alignSelf: 'flex-start',
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    marginBottom: 8,
+    backgroundColor: '#FFEBEE',
+    borderRadius: 6,
+    borderWidth: 1,
+    borderColor: '#FFCDD2',
+  },
+  reEnrollButtonText: {
+    fontSize: 13,
+    fontWeight: '600',
+    color: '#C62828',
+    marginLeft: 6,
   },
 });

@@ -60,7 +60,10 @@ class MdmAgentService : Service() {
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
-        client?.reconnect()
+        // onCreate already calls connect(); avoid canceling the in-flight socket here.
+        if (flags and START_FLAG_REDELIVERY != 0) {
+            client?.reconnect()
+        }
         return START_STICKY
     }
 

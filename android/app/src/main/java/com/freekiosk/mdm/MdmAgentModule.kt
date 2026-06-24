@@ -76,6 +76,19 @@ class MdmAgentModule(private val reactContext: ReactApplicationContext) :
         promise.resolve(map)
     }
 
+    @ReactMethod
+    fun clearEnrollment(promise: Promise) {
+        try {
+            MdmAgentPrefs.setEnabled(reactContext, false)
+            MdmAgentService.stop(reactContext)
+            MdmAgentPrefs.clearCredentials(reactContext)
+            promise.resolve(true)
+        } catch (e: Exception) {
+            Log.e(TAG, "clearEnrollment failed", e)
+            promise.reject("CLEAR_ENROLLMENT_ERROR", e.message, e)
+        }
+    }
+
     private fun sendEvent(event: String, params: WritableMap?) {
         reactContext
             .getJSModule(DeviceEventManagerModule.RCTDeviceEventEmitter::class.java)

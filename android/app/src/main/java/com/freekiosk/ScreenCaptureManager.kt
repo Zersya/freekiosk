@@ -5,7 +5,6 @@ import android.content.ComponentName
 import android.content.Context
 import android.content.Intent
 import android.graphics.Bitmap
-import android.graphics.BitmapFactory
 import android.graphics.PixelFormat
 import android.hardware.display.DisplayManager
 import android.hardware.display.VirtualDisplay
@@ -21,7 +20,6 @@ import android.util.Log
 import java.io.ByteArrayInputStream
 import java.io.ByteArrayOutputStream
 import java.nio.ByteBuffer
-import java.util.concurrent.atomic.AtomicReference
 
 /**
  * Captures the full device screen via MediaProjection for /api/screenshot.
@@ -48,7 +46,11 @@ object ScreenCaptureManager {
     private var captureThread: HandlerThread? = null
     private var captureHandler: Handler? = null
 
-    private val latestPngBytes = AtomicReference<ByteArray?>(null)
+    // The latest captured frame is kept as a Bitmap so we can encode JPEG (stream)
+    // or PNG (single screenshot) on demand. This avoids the previous per-frame
+    // PNG-encode + PNG-decode + JPEG-encode round trip that made live view lag.
+    private val frameLock = Any()
+    private var latestBitmap: Bitmap? = null
 
     fun isActive(): Boolean = mediaProjection != null && imageReader != null
 
@@ -99,7 +101,11 @@ object ScreenCaptureManager {
         reader.setOnImageAvailableListener({ imageReader ->
             val image = imageReader.acquireLatestImage() ?: return@setOnImageAvailableListener
             try {
-                latestPngBytes.set(imageToPngBytes(image))
+                val bitmap = imageToBitmap(image)
+                synchronized(frameLock) {
+                    latestBitmap?.recycle()
+                    latestBitmap = bitmap
+                }
             } catch (e: Exception) {
                 Log.e(TAG, "Failed to cache projection frame", e)
             } finally {
@@ -128,27 +134,33 @@ object ScreenCaptureManager {
 
     fun getCaptureSize(): Pair<Int, Int> = Pair(width, height)
 
-    fun getLatestJpegBytes(quality: Int = 60): ByteArray? {
-        var pngBytes = latestPngBytes.get()
-        if (pngBytes == null || pngBytes.isEmpty()) {
-            captureFrame()?.close()
-            pngBytes = latestPngBytes.get()
-        }
-        if (pngBytes == null || pngBytes.isEmpty()) {
+    /**
+     * Encodes the most recent frame straight to JPEG. Optionally downscales so the
+     * longest side is at most [maxDimension] (0 = keep native resolution), which keeps
+     * live-view frames small enough to stay real-time.
+     */
+    fun getLatestJpegBytes(quality: Int = 60, maxDimension: Int = 0): ByteArray? {
+        if (!isActive()) {
             return null
         }
+        ensureLatestBitmap()
 
-        return try {
-            val bitmap = BitmapFactory.decodeByteArray(pngBytes, 0, pngBytes.size) ?: return null
-            val outputStream = ByteArrayOutputStream()
-            bitmap.compress(Bitmap.CompressFormat.JPEG, quality.coerceIn(1, 100), outputStream)
-            if (!bitmap.isRecycled) {
-                bitmap.recycle()
+        return synchronized(frameLock) {
+            val source = latestBitmap ?: return@synchronized null
+            val scaled = downscaleIfNeeded(source, maxDimension)
+            val target = scaled ?: source
+            try {
+                val outputStream = ByteArrayOutputStream()
+                target.compress(Bitmap.CompressFormat.JPEG, quality.coerceIn(1, 100), outputStream)
+                outputStream.toByteArray()
+            } catch (e: Exception) {
+                Log.e(TAG, "Failed to encode JPEG frame", e)
+                null
+            } finally {
+                if (scaled != null && scaled !== source && !scaled.isRecycled) {
+                    scaled.recycle()
+                }
             }
-            outputStream.toByteArray()
-        } catch (e: Exception) {
-            Log.e(TAG, "Failed to convert PNG to JPEG", e)
-            null
         }
     }
 
@@ -156,22 +168,42 @@ object ScreenCaptureManager {
         if (!isActive()) {
             return null
         }
+        ensureLatestBitmap()
 
-        latestPngBytes.get()?.let { bytes ->
-            if (bytes.isNotEmpty()) {
-                return ByteArrayInputStream(bytes)
+        return synchronized(frameLock) {
+            val source = latestBitmap ?: run {
+                Log.w(TAG, "No MediaProjection frame available")
+                return@synchronized null
             }
+            try {
+                val outputStream = ByteArrayOutputStream()
+                source.compress(Bitmap.CompressFormat.PNG, 100, outputStream)
+                ByteArrayInputStream(outputStream.toByteArray())
+            } catch (e: Exception) {
+                Log.e(TAG, "Failed to encode PNG frame", e)
+                null
+            }
+        }
+    }
+
+    /** Pulls a frame synchronously if the listener hasn't produced one yet. */
+    private fun ensureLatestBitmap() {
+        synchronized(frameLock) {
+            if (latestBitmap != null) return
         }
 
         repeat(15) { attempt ->
             val image = imageReader?.acquireLatestImage()
             if (image != null) {
                 try {
-                    val bytes = imageToPngBytes(image)
-                    latestPngBytes.set(bytes)
-                    return ByteArrayInputStream(bytes)
+                    val bitmap = imageToBitmap(image)
+                    synchronized(frameLock) {
+                        latestBitmap?.recycle()
+                        latestBitmap = bitmap
+                    }
+                    return
                 } catch (e: Exception) {
-                    Log.e(TAG, "Failed to convert projection frame to PNG", e)
+                    Log.e(TAG, "Failed to convert projection frame", e)
                 } finally {
                     image.close()
                 }
@@ -180,13 +212,29 @@ object ScreenCaptureManager {
                 Thread.sleep(100)
             }
         }
+    }
 
-        Log.w(TAG, "No MediaProjection frame available")
-        return null
+    private fun downscaleIfNeeded(source: Bitmap, maxDimension: Int): Bitmap? {
+        if (maxDimension <= 0) return null
+        val longest = maxOf(source.width, source.height)
+        if (longest <= maxDimension) return null
+
+        val scale = maxDimension.toFloat() / longest
+        val targetWidth = (source.width * scale).toInt().coerceAtLeast(1)
+        val targetHeight = (source.height * scale).toInt().coerceAtLeast(1)
+        return try {
+            Bitmap.createScaledBitmap(source, targetWidth, targetHeight, true)
+        } catch (e: Exception) {
+            Log.w(TAG, "Failed to downscale frame: ${e.message}")
+            null
+        }
     }
 
     fun stopProjection() {
-        latestPngBytes.set(null)
+        synchronized(frameLock) {
+            latestBitmap?.recycle()
+            latestBitmap = null
+        }
 
         try {
             virtualDisplay?.release()
@@ -247,7 +295,7 @@ object ScreenCaptureManager {
         }
     }
 
-    private fun imageToPngBytes(image: Image): ByteArray {
+    private fun imageToBitmap(image: Image): Bitmap {
         val plane = image.planes[0]
         val buffer: ByteBuffer = plane.buffer
         val pixelStride = plane.pixelStride
@@ -261,7 +309,7 @@ object ScreenCaptureManager {
         )
         bitmap.copyPixelsFromBuffer(buffer)
 
-        val cropped = if (rowPadding == 0) {
+        return if (rowPadding == 0) {
             bitmap
         } else {
             Bitmap.createBitmap(bitmap, 0, 0, width, height).also {
@@ -270,12 +318,5 @@ object ScreenCaptureManager {
                 }
             }
         }
-
-        val outputStream = ByteArrayOutputStream()
-        cropped.compress(Bitmap.CompressFormat.PNG, 90, outputStream)
-        if (!cropped.isRecycled) {
-            cropped.recycle()
-        }
-        return outputStream.toByteArray()
     }
 }

@@ -8,6 +8,7 @@ import android.net.NetworkRequest
 import android.net.wifi.WifiManager
 import android.os.Build
 import android.os.Handler
+import android.os.HandlerThread
 import android.os.Looper
 import android.os.PowerManager
 import android.provider.Settings
@@ -30,9 +31,14 @@ class MdmAgentClient(private val context: Context) {
         private const val TAG = "MdmAgentClient"
         private const val PROTOCOL_VERSION = 1
         private const val STATUS_INTERVAL_MS = 30_000L
+        // Cap the longest side of streamed frames so live view stays real-time.
+        private const val STREAM_MAX_DIMENSION = 1080
+        private const val STREAM_MAX_FPS = 15
     }
 
     private val mainHandler = Handler(Looper.getMainLooper())
+    private var streamThread: HandlerThread? = null
+    private var streamHandler: Handler? = null
     private val httpClient = OkHttpClient.Builder()
         .pingInterval(30, TimeUnit.SECONDS)
         .connectTimeout(20, TimeUnit.SECONDS)
@@ -99,6 +105,9 @@ class MdmAgentClient(private val context: Context) {
         mainHandler.removeCallbacks(statusRunnable)
         mainHandler.removeCallbacks(reconnectRunnable)
         stopStreaming()
+        streamThread?.quitSafely()
+        streamThread = null
+        streamHandler = null
         webSocket?.close(1000, "Client disconnect")
         webSocket = null
         releaseLocks()
@@ -189,6 +198,8 @@ class MdmAgentClient(private val context: Context) {
             }
         } else {
             onError?.invoke("MDM agent is not enrolled")
+            disconnectRequested.set(true)
+            mainHandler.removeCallbacks(reconnectRunnable)
             socket.close(1008, "Not enrolled")
             return
         }
@@ -263,12 +274,13 @@ class MdmAgentClient(private val context: Context) {
         val sessionId = message.optString("sessionId", "")
         if (sessionId.isBlank()) return
 
-        val fps = message.optInt("fps", 4).coerceIn(1, 10)
+        val fps = message.optInt("fps", 8).coerceIn(1, STREAM_MAX_FPS)
         val quality = message.optInt("quality", 60).coerceIn(1, 100)
-        val intervalMs = (1000L / fps).coerceAtLeast(100L)
+        val intervalMs = (1000L / fps).coerceAtLeast(33L)
 
         stopStreaming()
         activeStreamSessionId = sessionId
+        val handler = ensureStreamHandler()
 
         val runnable = object : Runnable {
             override fun run() {
@@ -278,11 +290,11 @@ class MdmAgentClient(private val context: Context) {
 
                 if (!ScreenCaptureManager.isActive()) {
                     Log.w(TAG, "stream_start ignored — screen capture is not active")
-                    mainHandler.postDelayed(this, intervalMs)
+                    handler.postDelayed(this, intervalMs)
                     return
                 }
 
-                val jpeg = ScreenCaptureManager.getLatestJpegBytes(quality)
+                val jpeg = ScreenCaptureManager.getLatestJpegBytes(quality, STREAM_MAX_DIMENSION)
                 if (jpeg != null && jpeg.isNotEmpty()) {
                     val payload = JSONObject().apply {
                         put("type", "stream_frame")
@@ -294,12 +306,12 @@ class MdmAgentClient(private val context: Context) {
                     socket.send(payload.toString())
                 }
 
-                mainHandler.postDelayed(this, intervalMs)
+                handler.postDelayed(this, intervalMs)
             }
         }
 
         streamRunnable = runnable
-        mainHandler.post(runnable)
+        handler.post(runnable)
         Log.i(TAG, "Started agent stream session $sessionId at ${fps}fps")
     }
 
@@ -310,8 +322,17 @@ class MdmAgentClient(private val context: Context) {
         }
     }
 
+    private fun ensureStreamHandler(): Handler {
+        streamHandler?.let { return it }
+        val thread = HandlerThread("MdmAgentStream").apply { start() }
+        val handler = Handler(thread.looper)
+        streamThread = thread
+        streamHandler = handler
+        return handler
+    }
+
     private fun stopStreaming() {
-        streamRunnable?.let { mainHandler.removeCallbacks(it) }
+        streamRunnable?.let { streamHandler?.removeCallbacks(it) }
         streamRunnable = null
         activeStreamSessionId = null
     }
