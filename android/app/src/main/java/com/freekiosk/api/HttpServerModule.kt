@@ -1010,7 +1010,7 @@ class HttpServerModule(private val reactContext: ReactApplicationContext) :
                     put("command", command)
                 }
             }
-            "remoteKey" -> {
+            "remoteKey", "remoteDpad" -> {
                 val key = params?.optString("key", "") ?: ""
                 if (key.isEmpty()) {
                     return JSONObject().apply {

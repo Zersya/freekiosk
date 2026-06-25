@@ -12,7 +12,7 @@ import java.io.ByteArrayOutputStream
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicBoolean
-import java.util.concurrent.atomic.AtomicReference
+import java.util.concurrent.atomic.AtomicLong
 
 /**
  * Full-display capture without MediaProjection consent.
@@ -25,8 +25,9 @@ object DeviceOwnerScreenCapture {
     private const val MIN_REFRESH_INTERVAL_MS = 750L
 
     private val captureInProgress = AtomicBoolean(false)
-    private val cachedBitmap = AtomicReference<Bitmap?>(null)
-    private val cacheTimestampMs = AtomicReference<Long>(0L)
+    private val cacheLock = Any()
+    private var cachedBitmap: Bitmap? = null
+    private val cacheTimestampMs = AtomicLong(0L)
 
     @Volatile private var refreshHandler: Handler? = null
     @Volatile private var refreshThread: HandlerThread? = null
@@ -43,12 +44,6 @@ object DeviceOwnerScreenCapture {
         return Build.VERSION.SDK_INT >= Build.VERSION_CODES.R && FreeKioskAccessibilityService.isRunning()
     }
 
-    // ── Background refresh ─────────────────────────────────────────────────────
-
-    /**
-     * Start a background loop that refreshes the cached frame at [intervalMs].
-     * Call this when streaming begins; call [stopRefresh] when streaming stops.
-     */
     fun startRefresh(context: Context, intervalMs: Long) {
         if (!isAvailable(context)) return
         refreshIntervalMs = intervalMs.coerceAtLeast(MIN_REFRESH_INTERVAL_MS)
@@ -57,7 +52,7 @@ object DeviceOwnerScreenCapture {
             val handler = Handler(thread.looper)
             refreshThread = thread
             refreshHandler = handler
-            scheduleNext(context, handler, intervalMs)
+            scheduleNext(context.applicationContext, handler, refreshIntervalMs)
         }
     }
 
@@ -67,38 +62,39 @@ object DeviceOwnerScreenCapture {
         refreshHandler = null
         refreshThread = null
         refreshIntervalMs = 0L
+        synchronized(cacheLock) {
+            cachedBitmap?.takeUnless { it.isRecycled }?.recycle()
+            cachedBitmap = null
+            cacheTimestampMs.set(0L)
+        }
     }
 
     private fun scheduleNext(context: Context, handler: Handler, intervalMs: Long) {
         handler.postDelayed({
-            captureBitmapInternal(context)?.let { fresh ->
-                val old = cachedBitmap.getAndSet(fresh)
-                if (old != null && !old.isRecycled) old.recycle()
-                cacheTimestampMs.set(System.currentTimeMillis())
+            captureFreshBitmap(context)?.let { fresh ->
+                synchronized(cacheLock) {
+                    cachedBitmap?.takeUnless { it.isRecycled }?.recycle()
+                    cachedBitmap = fresh
+                    cacheTimestampMs.set(System.currentTimeMillis())
+                }
             }
             if (refreshIntervalMs > 0) {
-                scheduleNext(context, handler, intervalMs)
+                scheduleNext(context, handler, refreshIntervalMs)
             }
         }, intervalMs)
     }
 
-    // ── Synchronous single capture ─────────────────────────────────────────────
-
-    /**
-     * Returns a PNG-encoded screenshot. Uses the cache if it's fresh (< 2x intervalMs),
-     * otherwise blocks for up to [CAPTURE_TIMEOUT_SEC] seconds.
-     */
     fun capturePng(context: Context): ByteArray? {
-        val bitmap = getCachedOrCapture(context) ?: return null
-        return encodePng(bitmap)
+        val bitmap = acquireBitmapForEncoding(context) ?: return null
+        return try {
+            encodePng(bitmap)
+        } finally {
+            recycleQuietly(bitmap)
+        }
     }
 
-    /**
-     * Returns a JPEG-encoded screenshot, optionally downscaled.
-     * Non-blocking if the background refresh loop is running.
-     */
     fun captureJpeg(context: Context, quality: Int = 60, maxDimension: Int = 0): ByteArray? {
-        val bitmap = getCachedOrCapture(context) ?: return null
+        val bitmap = acquireBitmapForEncoding(context) ?: return null
         val scaled = downscaleIfNeeded(bitmap, maxDimension)
         val target = scaled ?: bitmap
         return try {
@@ -109,24 +105,32 @@ object DeviceOwnerScreenCapture {
             Log.e(TAG, "Failed to encode JPEG", e)
             null
         } finally {
-            if (scaled != null && scaled !== bitmap && !scaled.isRecycled) scaled.recycle()
+            if (scaled != null && scaled !== bitmap) {
+                recycleQuietly(scaled)
+            }
+            recycleQuietly(bitmap)
         }
     }
 
-    private fun getCachedOrCapture(context: Context): Bitmap? {
-        val ageMs = System.currentTimeMillis() - cacheTimestampMs.get()
-        val maxAge = if (refreshIntervalMs > 0) refreshIntervalMs * 3 else 0L
-
-        if (maxAge > 0 && ageMs < maxAge) {
-            val cached = cachedBitmap.get()
-            if (cached != null && !cached.isRecycled) return cached
+    /** Returns an owned bitmap copy safe for encoding on any thread. */
+    private fun acquireBitmapForEncoding(context: Context): Bitmap? {
+        synchronized(cacheLock) {
+            val ageMs = System.currentTimeMillis() - cacheTimestampMs.get()
+            val maxAge = if (refreshIntervalMs > 0) refreshIntervalMs * 3 else 0L
+            if (maxAge > 0 && ageMs < maxAge) {
+                copyBitmap(cachedBitmap)?.let { return it }
+            }
         }
-        return captureBitmapInternal(context)
+        val fresh = captureFreshBitmap(context) ?: return null
+        val copy = copyBitmap(fresh)
+        if (copy != null) {
+            recycleQuietly(fresh)
+            return copy
+        }
+        return fresh
     }
 
-    // ── DPM capture internals ──────────────────────────────────────────────────
-
-    fun captureBitmapInternal(context: Context): Bitmap? {
+    private fun captureFreshBitmap(context: Context): Bitmap? {
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.R) return null
 
         FreeKioskAccessibilityService.takeScreenshotBitmap()?.let { return it }
@@ -178,7 +182,24 @@ object DeviceOwnerScreenCapture {
         return dpm.isDeviceOwnerApp(context.packageName)
     }
 
-    // ── Helpers ────────────────────────────────────────────────────────────────
+    private fun copyBitmap(source: Bitmap?): Bitmap? {
+        if (source == null || source.isRecycled) return null
+        return try {
+            source.copy(Bitmap.Config.ARGB_8888, false)
+        } catch (e: Exception) {
+            Log.w(TAG, "Failed to copy bitmap: ${e.message}")
+            null
+        }
+    }
+
+    private fun recycleQuietly(bitmap: Bitmap?) {
+        if (bitmap == null || bitmap.isRecycled) return
+        try {
+            bitmap.recycle()
+        } catch (e: Exception) {
+            Log.w(TAG, "Failed to recycle bitmap: ${e.message}")
+        }
+    }
 
     private fun encodePng(bitmap: Bitmap): ByteArray? {
         return try {
@@ -192,7 +213,7 @@ object DeviceOwnerScreenCapture {
     }
 
     private fun downscaleIfNeeded(source: Bitmap, maxDimension: Int): Bitmap? {
-        if (maxDimension <= 0) return null
+        if (maxDimension <= 0 || source.isRecycled) return null
         val longest = maxOf(source.width, source.height)
         if (longest <= maxDimension) return null
         val scale = maxDimension.toFloat() / longest

@@ -63,6 +63,16 @@ class FreeKioskAccessibilityService : AccessibilityService() {
         private var lastScreenshotAtMs = 0L
 
         private val screenshotLock = Any()
+
+        private fun copyBitmap(source: Bitmap?): Bitmap? {
+            if (source == null || source.isRecycled) return null
+            return try {
+                source.copy(Bitmap.Config.ARGB_8888, false)
+            } catch (e: Exception) {
+                Log.w(TAG, "Failed to copy screenshot bitmap: ${e.message}")
+                null
+            }
+        }
         
         @Volatile
         var instance: FreeKioskAccessibilityService? = null
@@ -70,20 +80,26 @@ class FreeKioskAccessibilityService : AccessibilityService() {
         
         fun isRunning(): Boolean = instance != null
 
-        /** Full-display capture without MediaProjection consent (API 30+, requires canTakeScreenshot). */
+        /** Returns an owned bitmap copy (caller must recycle). */
         fun takeScreenshotBitmap(timeoutSec: Long = 10, allowCached: Boolean = true): Bitmap? {
             val now = System.currentTimeMillis()
             if (allowCached) {
-                val cached = lastScreenshotBitmap
-                if (cached != null && !cached.isRecycled && now - lastScreenshotAtMs < MIN_SCREENSHOT_INTERVAL_MS) {
-                    return cached
+                synchronized(screenshotLock) {
+                    val cached = lastScreenshotBitmap
+                    if (cached != null && !cached.isRecycled &&
+                        now - lastScreenshotAtMs < MIN_SCREENSHOT_INTERVAL_MS
+                    ) {
+                        return copyBitmap(cached)
+                    }
                 }
             }
 
             val service = instance
             if (service == null) {
                 Log.w(TAG, "takeScreenshotBitmap: accessibility service not running")
-                return lastScreenshotBitmap?.takeUnless { it.isRecycled }
+                synchronized(screenshotLock) {
+                    return copyBitmap(lastScreenshotBitmap)
+                }
             }
             if (Build.VERSION.SDK_INT < Build.VERSION_CODES.R) return null
 
@@ -94,11 +110,11 @@ class FreeKioskAccessibilityService : AccessibilityService() {
                     if (cached != null && !cached.isRecycled &&
                         refreshedAt - lastScreenshotAtMs < MIN_SCREENSHOT_INTERVAL_MS
                     ) {
-                        return cached
+                        return copyBitmap(cached)
                     }
                 }
 
-                var bitmap: Bitmap? = null
+                var captured: Bitmap? = null
                 val latch = CountDownLatch(1)
 
                 try {
@@ -112,11 +128,11 @@ class FreeKioskAccessibilityService : AccessibilityService() {
                                         result.hardwareBuffer,
                                         result.colorSpace
                                     )
-                                    bitmap = hardware?.copy(Bitmap.Config.ARGB_8888, false)
+                                    captured = hardware?.copy(Bitmap.Config.ARGB_8888, false)
                                     hardware?.recycle()
-                                    if (bitmap != null) {
+                                    if (captured != null) {
                                         lastScreenshotBitmap?.takeUnless { it.isRecycled }?.recycle()
-                                        lastScreenshotBitmap = bitmap
+                                        lastScreenshotBitmap = captured
                                         lastScreenshotAtMs = System.currentTimeMillis()
                                     }
                                 } catch (e: Exception) {
@@ -140,19 +156,19 @@ class FreeKioskAccessibilityService : AccessibilityService() {
                 } catch (e: Exception) {
                     Log.w(TAG, "takeScreenshotBitmap not available: ${e.message}")
                     latch.countDown()
-                    return lastScreenshotBitmap?.takeUnless { it.isRecycled }
+                    return copyBitmap(lastScreenshotBitmap)
                 }
 
                 return try {
                     if (!latch.await(timeoutSec, TimeUnit.SECONDS)) {
                         Log.w(TAG, "takeScreenshotBitmap timed out")
-                        lastScreenshotBitmap?.takeUnless { it.isRecycled }
+                        copyBitmap(lastScreenshotBitmap)
                     } else {
-                        bitmap ?: lastScreenshotBitmap?.takeUnless { it.isRecycled }
+                        copyBitmap(captured) ?: copyBitmap(lastScreenshotBitmap)
                     }
                 } catch (e: InterruptedException) {
                     Log.w(TAG, "takeScreenshotBitmap interrupted: ${e.message}")
-                    lastScreenshotBitmap?.takeUnless { it.isRecycled }
+                    copyBitmap(lastScreenshotBitmap)
                 }
             }
         }
