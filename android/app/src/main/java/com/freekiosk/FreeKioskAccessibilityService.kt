@@ -3,6 +3,7 @@ package com.freekiosk
 import android.accessibilityservice.AccessibilityService
 import android.accessibilityservice.AccessibilityServiceInfo
 import android.accessibilityservice.GestureDescription
+import android.graphics.Bitmap
 import android.graphics.Path
 import android.graphics.Rect
 import android.os.Build
@@ -16,6 +17,7 @@ import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicBoolean
 import android.view.KeyCharacterMap
 import android.view.KeyEvent
+import android.view.Display
 import android.view.View
 import android.view.accessibility.AccessibilityEvent
 import android.view.accessibility.AccessibilityNodeInfo
@@ -52,12 +54,108 @@ class FreeKioskAccessibilityService : AccessibilityService() {
 
     companion object {
         private const val TAG = "FreeKioskA11y"
+        private const val MIN_SCREENSHOT_INTERVAL_MS = 750L
+
+        @Volatile
+        private var lastScreenshotBitmap: Bitmap? = null
+
+        @Volatile
+        private var lastScreenshotAtMs = 0L
+
+        private val screenshotLock = Any()
         
         @Volatile
         var instance: FreeKioskAccessibilityService? = null
             private set
         
         fun isRunning(): Boolean = instance != null
+
+        /** Full-display capture without MediaProjection consent (API 30+, requires canTakeScreenshot). */
+        fun takeScreenshotBitmap(timeoutSec: Long = 10, allowCached: Boolean = true): Bitmap? {
+            val now = System.currentTimeMillis()
+            if (allowCached) {
+                val cached = lastScreenshotBitmap
+                if (cached != null && !cached.isRecycled && now - lastScreenshotAtMs < MIN_SCREENSHOT_INTERVAL_MS) {
+                    return cached
+                }
+            }
+
+            val service = instance
+            if (service == null) {
+                Log.w(TAG, "takeScreenshotBitmap: accessibility service not running")
+                return lastScreenshotBitmap?.takeUnless { it.isRecycled }
+            }
+            if (Build.VERSION.SDK_INT < Build.VERSION_CODES.R) return null
+
+            synchronized(screenshotLock) {
+                val refreshedAt = System.currentTimeMillis()
+                if (allowCached) {
+                    val cached = lastScreenshotBitmap
+                    if (cached != null && !cached.isRecycled &&
+                        refreshedAt - lastScreenshotAtMs < MIN_SCREENSHOT_INTERVAL_MS
+                    ) {
+                        return cached
+                    }
+                }
+
+                var bitmap: Bitmap? = null
+                val latch = CountDownLatch(1)
+
+                try {
+                    service.takeScreenshot(
+                        Display.DEFAULT_DISPLAY,
+                        service.mainExecutor,
+                        object : TakeScreenshotCallback {
+                            override fun onSuccess(result: ScreenshotResult) {
+                                try {
+                                    val hardware = Bitmap.wrapHardwareBuffer(
+                                        result.hardwareBuffer,
+                                        result.colorSpace
+                                    )
+                                    bitmap = hardware?.copy(Bitmap.Config.ARGB_8888, false)
+                                    hardware?.recycle()
+                                    if (bitmap != null) {
+                                        lastScreenshotBitmap?.takeUnless { it.isRecycled }?.recycle()
+                                        lastScreenshotBitmap = bitmap
+                                        lastScreenshotAtMs = System.currentTimeMillis()
+                                    }
+                                } catch (e: Exception) {
+                                    Log.e(TAG, "takeScreenshotBitmap onSuccess failed", e)
+                                } finally {
+                                    try {
+                                        result.hardwareBuffer.close()
+                                    } catch (_: Exception) {
+                                        // ignore
+                                    }
+                                    latch.countDown()
+                                }
+                            }
+
+                            override fun onFailure(errorCode: Int) {
+                                Log.w(TAG, "takeScreenshotBitmap failed: errorCode=$errorCode")
+                                latch.countDown()
+                            }
+                        }
+                    )
+                } catch (e: Exception) {
+                    Log.w(TAG, "takeScreenshotBitmap not available: ${e.message}")
+                    latch.countDown()
+                    return lastScreenshotBitmap?.takeUnless { it.isRecycled }
+                }
+
+                return try {
+                    if (!latch.await(timeoutSec, TimeUnit.SECONDS)) {
+                        Log.w(TAG, "takeScreenshotBitmap timed out")
+                        lastScreenshotBitmap?.takeUnless { it.isRecycled }
+                    } else {
+                        bitmap ?: lastScreenshotBitmap?.takeUnless { it.isRecycled }
+                    }
+                } catch (e: InterruptedException) {
+                    Log.w(TAG, "takeScreenshotBitmap interrupted: ${e.message}")
+                    lastScreenshotBitmap?.takeUnless { it.isRecycled }
+                }
+            }
+        }
 
         /**
          * Simulate a tap at device pixel coordinates (requires API 24+).

@@ -22,6 +22,7 @@ import { StorageService } from '../utils/storage';
 import { httpServer } from '../utils/HttpServerModule';
 import { screenCapture } from '../utils/ScreenCaptureModule';
 import { mdmAgent } from '../utils/MdmAgentModule';
+import KioskModule from '../utils/KioskModule';
 
 interface ApiSettingsSectionProps {
   onSettingsChanged?: () => void;
@@ -48,6 +49,7 @@ export const ApiSettingsSection: React.FC<ApiSettingsSectionProps> = ({
   const [mdmDeviceId, setMdmDeviceId] = useState(0);
   const [mdmEnrolled, setMdmEnrolled] = useState(false);
   const [mdmLoading, setMdmLoading] = useState(false);
+  const [isDeviceOwner, setIsDeviceOwner] = useState(false);
 
   // Load settings on mount
   useEffect(() => {
@@ -82,6 +84,14 @@ export const ApiSettingsSection: React.FC<ApiSettingsSectionProps> = ({
   }, []);
 
   const loadSettings = async () => {
+    if (Platform.OS === 'android') {
+      try {
+        setIsDeviceOwner(await KioskModule.isDeviceOwner());
+      } catch {
+        setIsDeviceOwner(false);
+      }
+    }
+
     const [enabled, port, key, control, remoteShot] = await Promise.all([
       StorageService.getRestApiEnabled(),
       StorageService.getRestApiPort(),
@@ -94,13 +104,35 @@ export const ApiSettingsSection: React.FC<ApiSettingsSectionProps> = ({
     setApiPort(port.toString());
     setApiKey(key);
     setAllowControl(control);
-    setRemoteScreenshot(remoteShot);
+
+    let wanted = remoteShot;
+    if (Platform.OS === 'android') {
+      const nativeWanted = await screenCapture.isWanted();
+      wanted = remoteShot || nativeWanted;
+      if (wanted && !remoteShot) {
+        await StorageService.saveRestApiRemoteScreenshot(true);
+      }
+      if (wanted && !nativeWanted) {
+        await screenCapture.setWanted(true);
+      }
+    }
+
+    setRemoteScreenshot(wanted);
     const active = await screenCapture.isActive();
     setRemoteScreenshotActive(active);
-    if (remoteShot && !active) {
-      // Preference saved but MediaProjection was stopped (e.g. by kiosk mode) — user must re-enable.
-      await StorageService.saveRestApiRemoteScreenshot(false);
-      setRemoteScreenshot(false);
+
+    if (Platform.OS === 'android' && wanted && !active) {
+      const isDeviceOwner = await KioskModule.isDeviceOwner();
+      if (isDeviceOwner) {
+        setRemoteScreenshotActive(true);
+      } else {
+        try {
+          await screenCapture.requestPermission();
+          setRemoteScreenshotActive(true);
+        } catch {
+          // Preference stays on; MainActivity also auto-prompts once per app start.
+        }
+      }
     }
 
     // Always sync server state with stored settings.
@@ -210,21 +242,32 @@ export const ApiSettingsSection: React.FC<ApiSettingsSectionProps> = ({
   const handleRemoteScreenshotChange = async (value: boolean) => {
     if (value) {
       try {
-        await screenCapture.requestPermission();
-        setRemoteScreenshot(true);
-        setRemoteScreenshotActive(true);
+        await screenCapture.setWanted(true);
         await StorageService.saveRestApiRemoteScreenshot(true);
-        Alert.alert(
-          'Remote Screenshot Enabled',
-          'Full-screen capture is active for /api/screenshot.\n\n' +
-            '• Keep the screen-recording notification visible\n' +
-            '• Enable this before or after kiosk mode — if Live View shows only the dashboard, toggle off and on again\n' +
-            '• External apps in Multi-App mode are included when capture is active'
-        );
+        setRemoteScreenshot(true);
+
+        const isDeviceOwner = Platform.OS === 'android' && (await KioskModule.isDeviceOwner());
+        if (isDeviceOwner) {
+          setRemoteScreenshotActive(true);
+          Alert.alert(
+            'Remote Screenshot Enabled',
+            'Full-screen capture is active via Device Owner — no system consent needed.\n\n' +
+              '• Works automatically after reboot when this setting stays on\n' +
+              '• External apps in Multi-App mode are included'
+          );
+        } else {
+          await screenCapture.requestPermission();
+          setRemoteScreenshotActive(true);
+          Alert.alert(
+            'Remote Screenshot Enabled',
+            'Full-screen capture is active for /api/screenshot.\n\n' +
+              '• Keep the screen-recording notification visible\n' +
+              '• After a reboot you may need to approve capture once — the setting stays on\n' +
+              '• External apps in Multi-App mode are included when capture is active'
+          );
+        }
       } catch (error: any) {
-        setRemoteScreenshot(false);
         setRemoteScreenshotActive(false);
-        await StorageService.saveRestApiRemoteScreenshot(false);
         Alert.alert(
           'Permission Required',
           error?.message || 'Screen capture permission was denied. Full-screen screenshots require this one-time consent.'
@@ -236,6 +279,7 @@ export const ApiSettingsSection: React.FC<ApiSettingsSectionProps> = ({
       } catch (_) {
         // ignore
       }
+      await screenCapture.setWanted(false);
       setRemoteScreenshot(false);
       setRemoteScreenshotActive(false);
       await StorageService.saveRestApiRemoteScreenshot(false);
@@ -466,13 +510,19 @@ export const ApiSettingsSection: React.FC<ApiSettingsSectionProps> = ({
           {/* Remote Screenshot (MediaProjection) */}
           <SettingsSwitch
             label="Remote Screenshot (Full Screen)"
-            value={remoteScreenshotActive}
+            value={remoteScreenshot}
             onValueChange={handleRemoteScreenshotChange}
             icon="monitor-screenshot"
             hint={
               remoteScreenshotActive
-                ? 'Full-screen capture active — keep the screen-recording notification visible'
-                : 'Enable before starting kiosk mode, or re-enable if capture stopped. Required for external apps in Live View.'
+                ? isDeviceOwner
+                  ? 'Device Owner capture active — works automatically after reboot'
+                  : 'Full-screen capture active — keep the screen-recording notification visible'
+                : remoteScreenshot
+                  ? isDeviceOwner
+                    ? 'Enabled — capture restores automatically on reboot'
+                    : 'Enabled — approve the screen-capture prompt to restore Live View after reboot'
+                  : 'Enable for MDM Live View and full-screen remote screenshots.'
             }
           />
 

@@ -20,6 +20,26 @@ class ScreenCaptureService {
     }
   }
 
+  async isWanted(): Promise<boolean> {
+    if (Platform.OS !== 'android' || !ScreenCaptureModule?.isRemoteCaptureWanted) {
+      return false;
+    }
+
+    try {
+      return await ScreenCaptureModule.isRemoteCaptureWanted();
+    } catch {
+      return false;
+    }
+  }
+
+  async setWanted(wanted: boolean): Promise<boolean> {
+    if (Platform.OS !== 'android' || !ScreenCaptureModule?.setRemoteCaptureWanted) {
+      return false;
+    }
+
+    return ScreenCaptureModule.setRemoteCaptureWanted(wanted);
+  }
+
   async requestPermission(): Promise<boolean> {
     if (Platform.OS !== 'android' || !ScreenCaptureModule) {
       throw new Error('Screen capture is only available on Android');

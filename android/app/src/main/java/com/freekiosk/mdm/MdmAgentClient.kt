@@ -14,6 +14,7 @@ import android.os.PowerManager
 import android.provider.Settings
 import android.util.Base64
 import android.util.Log
+import com.freekiosk.DeviceOwnerScreenCapture
 import com.freekiosk.ScreenCaptureManager
 import com.freekiosk.api.HttpServerModule
 import okhttp3.OkHttpClient
@@ -248,6 +249,11 @@ class MdmAgentClient(private val context: Context) {
         val command = message.optString("command", "")
         val params = message.optJSONObject("params")
 
+        if (command == "screenshot") {
+            handleScreenshotCommand(requestId, params)
+            return
+        }
+
         val result = try {
             HttpServerModule.dispatchCommand(command, params)
         } catch (e: Exception) {
@@ -270,6 +276,61 @@ class MdmAgentClient(private val context: Context) {
         webSocket?.send(response.toString())
     }
 
+    private fun handleScreenshotCommand(requestId: String, params: JSONObject?) {
+        val quality = params?.optInt("quality", 80)?.coerceIn(1, 100) ?: 80
+        ensureStreamHandler().post {
+            try {
+                val png = ScreenCaptureManager.captureFrame(context)
+                if (png != null) {
+                    val bytes = png.readBytes()
+                    val base64 = Base64.encodeToString(bytes, Base64.NO_WRAP)
+                    val response = JSONObject().apply {
+                        put("type", "command_result")
+                        put("requestId", requestId)
+                        put("success", true)
+                        put("data", JSONObject().apply {
+                            put("imageBase64", base64)
+                            put("mimeType", "image/png")
+                        })
+                    }
+                    webSocket?.send(response.toString())
+                } else {
+                    val jpegBytes = ScreenCaptureManager.getLatestJpegBytes(context, quality, STREAM_MAX_DIMENSION)
+                    if (jpegBytes != null && jpegBytes.isNotEmpty()) {
+                        val base64 = Base64.encodeToString(jpegBytes, Base64.NO_WRAP)
+                        val response = JSONObject().apply {
+                            put("type", "command_result")
+                            put("requestId", requestId)
+                            put("success", true)
+                            put("data", JSONObject().apply {
+                                put("imageBase64", base64)
+                                put("mimeType", "image/jpeg")
+                            })
+                        }
+                        webSocket?.send(response.toString())
+                    } else {
+                        val response = JSONObject().apply {
+                            put("type", "command_result")
+                            put("requestId", requestId)
+                            put("success", false)
+                            put("error", "Screen capture not available — enable Remote Screenshot in settings")
+                        }
+                        webSocket?.send(response.toString())
+                    }
+                }
+            } catch (e: Exception) {
+                Log.e(TAG, "Screenshot command failed: ${e.message}", e)
+                val response = JSONObject().apply {
+                    put("type", "command_result")
+                    put("requestId", requestId)
+                    put("success", false)
+                    put("error", e.message ?: "Screenshot failed")
+                }
+                webSocket?.send(response.toString())
+            }
+        }
+    }
+
     private fun handleStreamStart(message: JSONObject) {
         val sessionId = message.optString("sessionId", "")
         if (sessionId.isBlank()) return
@@ -282,19 +343,23 @@ class MdmAgentClient(private val context: Context) {
         activeStreamSessionId = sessionId
         val handler = ensureStreamHandler()
 
+        if (DeviceOwnerScreenCapture.isAvailable(context) && !ScreenCaptureManager.isActive()) {
+            DeviceOwnerScreenCapture.startRefresh(context, intervalMs)
+        }
+
         val runnable = object : Runnable {
             override fun run() {
                 if (activeStreamSessionId != sessionId) return
                 val socket = webSocket ?: return
                 if (!sessionReady.get()) return
 
-                if (!ScreenCaptureManager.isActive()) {
+                if (!ScreenCaptureManager.isCaptureReady(context)) {
                     Log.w(TAG, "stream_start ignored — screen capture is not active")
                     handler.postDelayed(this, intervalMs)
                     return
                 }
 
-                val jpeg = ScreenCaptureManager.getLatestJpegBytes(quality, STREAM_MAX_DIMENSION)
+                val jpeg = ScreenCaptureManager.getLatestJpegBytes(context, quality, STREAM_MAX_DIMENSION)
                 if (jpeg != null && jpeg.isNotEmpty()) {
                     val payload = JSONObject().apply {
                         put("type", "stream_frame")
@@ -335,6 +400,7 @@ class MdmAgentClient(private val context: Context) {
         streamRunnable?.let { streamHandler?.removeCallbacks(it) }
         streamRunnable = null
         activeStreamSessionId = null
+        DeviceOwnerScreenCapture.stopRefresh()
     }
 
     private fun publishStatus() {

@@ -16,7 +16,42 @@ class ScreenCaptureModule(private val reactContext: ReactApplicationContext) :
     companion object {
         const val NAME = "ScreenCaptureModule"
         private const val TAG = "ScreenCaptureModule"
-        private const val REQUEST_MEDIA_PROJECTION = 9101
+        const val REQUEST_MEDIA_PROJECTION = 9101
+
+        @Volatile
+        var restorePromptedThisProcess = false
+
+        fun tryRestoreRemoteCaptureIfNeeded(activity: Activity) {
+            if (restorePromptedThisProcess) {
+                return
+            }
+            val appContext = activity.applicationContext
+            if (ScreenCaptureManager.isDeviceOwnerCaptureAvailable(appContext)) {
+                return
+            }
+            if (!ScreenCaptureManager.isRemoteCaptureWanted(appContext)) {
+                return
+            }
+            if (ScreenCaptureManager.isActive()) {
+                return
+            }
+
+            restorePromptedThisProcess = true
+            activity.runOnUiThread {
+                try {
+                    val projectionManager = appContext.getSystemService(android.content.Context.MEDIA_PROJECTION_SERVICE)
+                        as MediaProjectionManager
+                    activity.startActivityForResult(
+                        projectionManager.createScreenCaptureIntent(),
+                        REQUEST_MEDIA_PROJECTION
+                    )
+                    Log.d(TAG, "Auto-restoring MediaProjection after reboot")
+                } catch (e: Exception) {
+                    restorePromptedThisProcess = false
+                    Log.w(TAG, "Failed to auto-restore screen capture: ${e.message}")
+                }
+            }
+        }
     }
 
     private var pendingPromise: Promise? = null
@@ -29,7 +64,22 @@ class ScreenCaptureModule(private val reactContext: ReactApplicationContext) :
 
     @ReactMethod
     fun isScreenCaptureActive(promise: Promise) {
-        promise.resolve(ScreenCaptureManager.isActive())
+        promise.resolve(ScreenCaptureManager.isCaptureReady(reactContext))
+    }
+
+    @ReactMethod
+    fun isRemoteCaptureWanted(promise: Promise) {
+        promise.resolve(ScreenCaptureManager.isRemoteCaptureWanted(reactContext))
+    }
+
+    @ReactMethod
+    fun setRemoteCaptureWanted(wanted: Boolean, promise: Promise) {
+        try {
+            ScreenCaptureManager.setRemoteCaptureWanted(reactContext, wanted)
+            promise.resolve(true)
+        } catch (e: Exception) {
+            promise.reject("SET_WANTED_FAILED", "Failed to save remote capture preference: ${e.message}")
+        }
     }
 
     @ReactMethod
@@ -64,7 +114,7 @@ class ScreenCaptureModule(private val reactContext: ReactApplicationContext) :
     fun stopScreenCapture(promise: Promise) {
         try {
             ScreenCaptureService.stop(reactContext)
-            ScreenCaptureManager.stopProjection(reactContext)
+            ScreenCaptureManager.stopProjection(reactContext, userInitiated = true)
             promise.resolve(true)
         } catch (e: Exception) {
             promise.reject("STOP_FAILED", "Failed to stop screen capture: ${e.message}")
@@ -79,22 +129,22 @@ class ScreenCaptureModule(private val reactContext: ReactApplicationContext) :
         val promise = pendingPromise
         pendingPromise = null
 
-        if (promise == null) {
-            return
-        }
-
         if (resultCode != Activity.RESULT_OK || data == null) {
-            promise.reject("PERMISSION_DENIED", "Screen capture permission was denied")
+            if (promise != null) {
+                promise.reject("PERMISSION_DENIED", "Screen capture permission was denied")
+            } else {
+                Log.w(TAG, "Auto-restore screen capture permission was denied")
+            }
             return
         }
 
         try {
             val projectionData = Intent(data)
             ScreenCaptureService.start(reactContext, resultCode, projectionData)
-            promise.resolve(true)
+            promise?.resolve(true)
         } catch (e: Exception) {
             Log.e(TAG, "Failed to start screen capture service: ${e.message}", e)
-            promise.reject("START_FAILED", "Failed to start screen capture: ${e.message}")
+            promise?.reject("START_FAILED", "Failed to start screen capture: ${e.message}")
         }
     }
 

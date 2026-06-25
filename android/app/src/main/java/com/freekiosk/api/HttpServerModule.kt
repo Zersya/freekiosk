@@ -43,6 +43,7 @@ import android.os.Build
 import com.freekiosk.DeviceAdminReceiver
 import com.freekiosk.CameraPhotoModule
 import com.freekiosk.FreeKioskAccessibilityService
+import com.freekiosk.DeviceOwnerScreenCapture
 import com.freekiosk.ScreenCaptureManager
 import com.freekiosk.ScreenController
 import org.json.JSONObject
@@ -265,6 +266,7 @@ class HttpServerModule(private val reactContext: ReactApplicationContext) :
 
             server = KioskHttpServer(
                 port = port,
+                appContext = reactContext.applicationContext,
                 apiKey = if (apiKey.isNullOrEmpty()) null else apiKey,
                 allowControl = allowControl,
                 statusProvider = { getDeviceStatus() },
@@ -506,7 +508,9 @@ class HttpServerModule(private val reactContext: ReactApplicationContext) :
             put("uptime", android.os.SystemClock.elapsedRealtime() / 1000)
             val (captureWidth, captureHeight) = ScreenCaptureManager.getCaptureSize()
             put("screenCapture", JSONObject().apply {
-                put("active", ScreenCaptureManager.isActive())
+                put("active", ScreenCaptureManager.isCaptureReady(reactContext))
+                put("deviceOwnerCapture", ScreenCaptureManager.isDeviceOwnerCaptureAvailable(reactContext))
+                put("accessibilityCapture", DeviceOwnerScreenCapture.isAccessibilityCaptureAvailable())
                 put("width", captureWidth)
                 put("height", captureHeight)
             })
@@ -726,6 +730,124 @@ class HttpServerModule(private val reactContext: ReactApplicationContext) :
                     put("command", command)
                 }
             }
+            "brightness", "setBrightness" -> {
+                val value = params?.optInt("value", -1) ?: -1
+                if (value !in 0..100) {
+                    return JSONObject().apply {
+                        put("executed", false)
+                        put("command", command)
+                        put("error", "Invalid brightness value (0-100)")
+                    }
+                }
+                sendEvent("onApiCommand", Arguments.createMap().apply {
+                    putString("command", "setBrightness")
+                    putString("params", JSONObject().put("value", value).toString())
+                })
+                return JSONObject().apply {
+                    put("executed", true)
+                    put("success", true)
+                    put("command", command)
+                    put("value", value)
+                }
+            }
+            "volume", "setVolume" -> {
+                val value = params?.optInt("value", -1) ?: -1
+                if (value !in 0..100) {
+                    return JSONObject().apply {
+                        put("executed", false)
+                        put("command", command)
+                        put("error", "Invalid volume value (0-100)")
+                    }
+                }
+                return try {
+                    val audioManager = reactContext.getSystemService(Context.AUDIO_SERVICE) as AudioManager
+                    val maxVolume = audioManager.getStreamMaxVolume(AudioManager.STREAM_MUSIC)
+                    val targetVolume = (value * maxVolume / 100).coerceIn(0, maxVolume)
+                    audioManager.setStreamVolume(AudioManager.STREAM_MUSIC, targetVolume, 0)
+                    Log.d(TAG, "Volume set to $value% (raw: $targetVolume/$maxVolume)")
+                    JSONObject().apply {
+                        put("executed", true)
+                        put("success", true)
+                        put("command", command)
+                        put("value", value)
+                    }
+                } catch (e: Exception) {
+                    Log.e(TAG, "Failed to set volume", e)
+                    JSONObject().apply {
+                        put("executed", false)
+                        put("command", command)
+                        put("error", "Failed to set volume: ${e.message}")
+                    }
+                }
+            }
+            "url", "setUrl" -> {
+                val url = params?.optString("url", "") ?: ""
+                if (url.isBlank()) {
+                    return JSONObject().apply {
+                        put("executed", false)
+                        put("command", command)
+                        put("error", "URL is required")
+                    }
+                }
+                sendEvent("onApiCommand", Arguments.createMap().apply {
+                    putString("command", "setUrl")
+                    putString("params", JSONObject().put("url", url).toString())
+                })
+                return JSONObject().apply {
+                    put("executed", true)
+                    put("success", true)
+                    put("command", command)
+                    put("url", url)
+                }
+            }
+            "lock", "lockDevice" -> {
+                return try {
+                    val dpm = reactContext.getSystemService(Context.DEVICE_POLICY_SERVICE) as android.app.admin.DevicePolicyManager
+                    val adminComp = android.content.ComponentName(reactContext, DeviceAdminReceiver::class.java)
+                    if (dpm.isDeviceOwnerApp(reactContext.packageName) || dpm.isAdminActive(adminComp)) {
+                        dpm.lockNow()
+                        val method = if (dpm.isDeviceOwnerApp(reactContext.packageName)) "DeviceOwner" else "DeviceAdmin"
+                        Log.d(TAG, "Device locked via $method lockNow()")
+                        JSONObject().apply {
+                            put("executed", true)
+                            put("success", true)
+                            put("command", command)
+                            put("method", method)
+                        }
+                    } else if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P && FreeKioskAccessibilityService.isRunning()) {
+                        val ok = FreeKioskAccessibilityService.performAction(AccessibilityService.GLOBAL_ACTION_LOCK_SCREEN)
+                        if (ok) {
+                            Log.d(TAG, "Device locked via AccessibilityService GLOBAL_ACTION_LOCK_SCREEN")
+                            JSONObject().apply {
+                                put("executed", true)
+                                put("success", true)
+                                put("command", command)
+                                put("method", "AccessibilityService")
+                            }
+                        } else {
+                            JSONObject().apply {
+                                put("executed", false)
+                                put("command", command)
+                                put("error", "GLOBAL_ACTION_LOCK_SCREEN failed")
+                            }
+                        }
+                    } else {
+                        Log.w(TAG, "Lock device failed: not Device Owner and no AccessibilityService")
+                        JSONObject().apply {
+                            put("executed", false)
+                            put("command", command)
+                            put("error", "Lock device requires Device Owner mode or AccessibilityService (API 28+)")
+                        }
+                    }
+                } catch (e: Exception) {
+                    Log.e(TAG, "Lock device failed: ${e.message}")
+                    JSONObject().apply {
+                        put("executed", false)
+                        put("command", command)
+                        put("error", "Lock device failed: ${e.message}")
+                    }
+                }
+            }
             "screenOn" -> {
                 turnScreenOn()
                 return JSONObject().apply {
@@ -868,53 +990,6 @@ class HttpServerModule(private val reactContext: ReactApplicationContext) :
                     put("command", command)
                 }
             }
-            "lockDevice" -> {
-                return try {
-                    val dpm = reactContext.getSystemService(Context.DEVICE_POLICY_SERVICE) as android.app.admin.DevicePolicyManager
-                    val adminComp = android.content.ComponentName(reactContext, DeviceAdminReceiver::class.java)
-                    if (dpm.isDeviceOwnerApp(reactContext.packageName) || dpm.isAdminActive(adminComp)) {
-                        dpm.lockNow()
-                        val method = if (dpm.isDeviceOwnerApp(reactContext.packageName)) "DeviceOwner" else "DeviceAdmin"
-                        Log.d(TAG, "Device locked via $method lockNow()")
-                        JSONObject().apply {
-                            put("executed", true)
-                            put("command", command)
-                            put("method", method)
-                        }
-                    } else if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P && FreeKioskAccessibilityService.isRunning()) {
-                        // AccessibilityService fallback (API 28+)
-                        val ok = FreeKioskAccessibilityService.performAction(AccessibilityService.GLOBAL_ACTION_LOCK_SCREEN)
-                        if (ok) {
-                            Log.d(TAG, "Device locked via AccessibilityService GLOBAL_ACTION_LOCK_SCREEN")
-                            JSONObject().apply {
-                                put("executed", true)
-                                put("command", command)
-                                put("method", "AccessibilityService")
-                            }
-                        } else {
-                            JSONObject().apply {
-                                put("executed", false)
-                                put("command", command)
-                                put("error", "GLOBAL_ACTION_LOCK_SCREEN failed")
-                            }
-                        }
-                    } else {
-                        Log.w(TAG, "Lock device failed: not Device Owner and no AccessibilityService")
-                        JSONObject().apply {
-                            put("executed", false)
-                            put("command", command)
-                            put("error", "Lock device requires Device Owner mode or AccessibilityService (API 28+)")
-                        }
-                    }
-                } catch (e: Exception) {
-                    Log.e(TAG, "Lock device failed: ${e.message}")
-                    JSONObject().apply {
-                        put("executed", false)
-                        put("command", command)
-                        put("error", "Lock device failed: ${e.message}")
-                    }
-                }
-            }
             "restartUi" -> {
                 // Restart the React Native activity to refresh the UI
                 UiThreadUtil.runOnUiThread {
@@ -980,8 +1055,21 @@ class HttpServerModule(private val reactContext: ReactApplicationContext) :
                 }
             }
             "remoteTap" -> {
-                val x = params?.optInt("x", -1) ?: -1
-                val y = params?.optInt("y", -1) ?: -1
+                // Map normalized (0..1) coords against the same pixel space as the
+                // MediaProjection capture. displayMetrics often excludes the nav bar
+                // while the stream includes it, which shifts taps vertically.
+                val (screenW, screenH) = ScreenCaptureManager.resolveTapTargetSize(reactContext)
+                val xPct = params?.optDouble("xPct", -1.0) ?: -1.0
+                val yPct = params?.optDouble("yPct", -1.0) ?: -1.0
+                val x: Int
+                val y: Int
+                if (xPct in 0.0..1.0 && yPct in 0.0..1.0) {
+                    x = Math.round(xPct * screenW).toInt().coerceIn(0, screenW - 1)
+                    y = Math.round(yPct * screenH).toInt().coerceIn(0, screenH - 1)
+                } else {
+                    x = params?.optInt("x", -1) ?: -1
+                    y = params?.optInt("y", -1) ?: -1
+                }
                 if (x < 0 || y < 0) {
                     return JSONObject().apply {
                         put("executed", false)
@@ -1006,10 +1094,28 @@ class HttpServerModule(private val reactContext: ReactApplicationContext) :
                 }
             }
             "remoteSwipe" -> {
-                val x1 = params?.optInt("x1", -1) ?: -1
-                val y1 = params?.optInt("y1", -1) ?: -1
-                val x2 = params?.optInt("x2", -1) ?: -1
-                val y2 = params?.optInt("y2", -1) ?: -1
+                val (screenW, screenH) = ScreenCaptureManager.resolveTapTargetSize(reactContext)
+                val x1Pct = params?.optDouble("x1Pct", -1.0) ?: -1.0
+                val y1Pct = params?.optDouble("y1Pct", -1.0) ?: -1.0
+                val x2Pct = params?.optDouble("x2Pct", -1.0) ?: -1.0
+                val y2Pct = params?.optDouble("y2Pct", -1.0) ?: -1.0
+                val useNormalized = x1Pct in 0.0..1.0 && y1Pct in 0.0..1.0 &&
+                    x2Pct in 0.0..1.0 && y2Pct in 0.0..1.0
+                val x1: Int
+                val y1: Int
+                val x2: Int
+                val y2: Int
+                if (useNormalized) {
+                    x1 = Math.round(x1Pct * screenW).toInt().coerceIn(0, screenW - 1)
+                    y1 = Math.round(y1Pct * screenH).toInt().coerceIn(0, screenH - 1)
+                    x2 = Math.round(x2Pct * screenW).toInt().coerceIn(0, screenW - 1)
+                    y2 = Math.round(y2Pct * screenH).toInt().coerceIn(0, screenH - 1)
+                } else {
+                    x1 = params?.optInt("x1", -1) ?: -1
+                    y1 = params?.optInt("y1", -1) ?: -1
+                    x2 = params?.optInt("x2", -1) ?: -1
+                    y2 = params?.optInt("y2", -1) ?: -1
+                }
                 val duration = params?.optLong("duration", 300) ?: 300
                 if (x1 < 0 || y1 < 0 || x2 < 0 || y2 < 0) {
                     return JSONObject().apply {
@@ -1938,19 +2044,12 @@ class HttpServerModule(private val reactContext: ReactApplicationContext) :
 
     private fun captureScreenshot(): java.io.InputStream? {
         return try {
-            // 1. MediaProjection (non-DO tablets with user consent)
-            ScreenCaptureManager.captureFrame()?.let {
-                Log.d(TAG, "Screenshot captured via MediaProjection")
+            ScreenCaptureManager.captureFrame(reactContext)?.let {
+                Log.d(TAG, "Screenshot captured via screen capture")
                 return it
             }
 
-            // 2. Device Owner full-screen capture (Android 11+)
-            captureDeviceOwnerScreenshot()?.let {
-                Log.d(TAG, "Screenshot captured via DevicePolicyManager.takeScreenshot")
-                return it
-            }
-
-            // 3. Shell screencap (best-effort, OEM-dependent)
+            // Shell screencap (best-effort, OEM-dependent)
             captureShellScreenshot()?.let {
                 Log.d(TAG, "Screenshot captured via screencap")
                 return it
@@ -1982,65 +2081,6 @@ class HttpServerModule(private val reactContext: ReactApplicationContext) :
             bytes[1] == 0x50.toByte() &&
             bytes[2] == 0x4E.toByte() &&
             bytes[3] == 0x47.toByte()
-    }
-
-    private fun captureDeviceOwnerScreenshot(): ByteArrayInputStream? {
-        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.R) {
-            return null
-        }
-
-        val dpm = reactContext.getSystemService(Context.DEVICE_POLICY_SERVICE)
-            as android.app.admin.DevicePolicyManager
-        if (!dpm.isDeviceOwnerApp(reactContext.packageName)) {
-            return null
-        }
-
-        val adminComponent = ComponentName(reactContext, DeviceAdminReceiver::class.java)
-        return captureDeviceOwnerScreenshotInternal(dpm, adminComponent)
-    }
-
-    @RequiresApi(Build.VERSION_CODES.R)
-    private fun captureDeviceOwnerScreenshotInternal(
-        dpm: android.app.admin.DevicePolicyManager,
-        adminComponent: ComponentName
-    ): ByteArrayInputStream? {
-        var screenshot: ByteArrayInputStream? = null
-        val latch = CountDownLatch(1)
-
-        try {
-            val takeScreenshotMethod = dpm.javaClass.getMethod(
-                "takeScreenshot",
-                ComponentName::class.java,
-                java.util.concurrent.Executor::class.java,
-                java.util.function.Consumer::class.java
-            )
-            val callback = java.util.function.Consumer<Any> { screenshotResult ->
-                try {
-                    val bitmap = screenshotResult.javaClass.getMethod("getBitmap").invoke(screenshotResult) as? Bitmap
-                    if (bitmap != null && !bitmap.isRecycled) {
-                        screenshot = bitmapToPngStream(bitmap)
-                    } else {
-                        Log.w(TAG, "DPM takeScreenshot returned null bitmap")
-                    }
-                } catch (e: Exception) {
-                    Log.e(TAG, "Failed to process DPM screenshot", e)
-                } finally {
-                    latch.countDown()
-                }
-            }
-            takeScreenshotMethod.invoke(dpm, adminComponent, reactContext.mainExecutor, callback)
-
-            if (!latch.await(10, TimeUnit.SECONDS)) {
-                Log.w(TAG, "DPM takeScreenshot timed out")
-            }
-        } catch (e: Exception) {
-            Log.w(TAG, "DPM takeScreenshot not available: ${e.message}")
-            if (latch.count > 0) {
-                latch.countDown()
-            }
-        }
-
-        return screenshot
     }
 
     private fun captureShellScreenshot(): ByteArrayInputStream? {

@@ -6,6 +6,7 @@ import java.io.InputStream
  * Emits multipart/x-mixed-replace JPEG frames from ScreenCaptureManager at ~3-5 fps.
  */
 class MjpegStreamInputStream(
+    private val context: android.content.Context,
     private val frameIntervalMs: Long = 250,
     private val jpegQuality: Int = 60,
     private val onClose: (() -> Unit)? = null
@@ -28,7 +29,7 @@ class MjpegStreamInputStream(
 
     override fun read(b: ByteArray, off: Int, len: Int): Int {
         if (closed) return -1
-        if (!ScreenCaptureManager.isActive()) {
+        if (!ScreenCaptureManager.isCaptureReady(context)) {
             close()
             return -1
         }
@@ -48,7 +49,7 @@ class MjpegStreamInputStream(
     }
 
     private fun loadNextFrame(): Boolean {
-        if (closed || !ScreenCaptureManager.isActive()) return false
+        if (closed || !ScreenCaptureManager.isCaptureReady(context)) return false
 
         try {
             Thread.sleep(frameIntervalMs)
@@ -56,7 +57,7 @@ class MjpegStreamInputStream(
             return false
         }
 
-        val jpeg = ScreenCaptureManager.getLatestJpegBytes(jpegQuality)
+        val jpeg = ScreenCaptureManager.getLatestJpegBytes(context, jpegQuality)
         if (jpeg == null || jpeg.isEmpty()) {
             buffer = ByteArray(0)
             bufferPos = 0
