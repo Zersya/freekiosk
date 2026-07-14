@@ -14,6 +14,7 @@ import java.util.concurrent.atomic.AtomicBoolean
  */
 class KioskHttpServer(
     port: Int,
+    private val appContext: android.content.Context,
     private val apiKey: String?,
     private val allowControl: Boolean,
     private val statusProvider: () -> JSONObject,
@@ -575,7 +576,7 @@ class KioskHttpServer(
     }
 
     private fun handleScreenshotStream(): Response {
-        if (!ScreenCaptureManager.isActive()) {
+        if (!ScreenCaptureManager.isCaptureReady(appContext)) {
             return jsonError(
                 Response.Status.SERVICE_UNAVAILABLE,
                 "Screen capture is not active. Enable Remote Screenshot on the tablet."
@@ -589,7 +590,9 @@ class KioskHttpServer(
             }
         }
 
-        val stream = MjpegStreamInputStream(onClose = {
+        val stream = MjpegStreamInputStream(
+            context = appContext,
+            onClose = {
             streamActive.set(false)
             activeMjpegStream = null
         })

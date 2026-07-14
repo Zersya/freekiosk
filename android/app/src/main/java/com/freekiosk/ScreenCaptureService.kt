@@ -53,7 +53,7 @@ class ScreenCaptureService : Service() {
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         when (intent?.action) {
             ACTION_STOP -> {
-                ScreenCaptureManager.stopProjection(this)
+                ScreenCaptureManager.stopProjection(this, userInitiated = true)
                 stopForeground(STOP_FOREGROUND_REMOVE)
                 stopSelf()
                 return START_NOT_STICKY
@@ -88,7 +88,7 @@ class ScreenCaptureService : Service() {
                     ScreenCaptureManager.startProjection(this, resultCode, resultData)
                 } catch (e: Exception) {
                     Log.e(TAG, "Failed to start screen capture projection: ${e.message}", e)
-                    ScreenCaptureManager.stopProjection(this)
+                    ScreenCaptureManager.stopProjection()
                     stopForeground(STOP_FOREGROUND_REMOVE)
                     stopSelf()
                 }
@@ -100,7 +100,7 @@ class ScreenCaptureService : Service() {
 
     override fun onDestroy() {
         if (!ScreenCaptureManager.isActive()) {
-            ScreenCaptureManager.stopProjection(applicationContext)
+            ScreenCaptureManager.stopProjection()
         }
         super.onDestroy()
     }

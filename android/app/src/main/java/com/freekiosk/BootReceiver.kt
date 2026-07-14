@@ -24,6 +24,7 @@ class BootReceiver : BroadcastReceiver() {
          */
         const val DE_PREFS_NAME = "kiosk_de_boot_prefs"
         const val DE_KEY_FAST_BOOT_LOCK = "fast_boot_lock_enabled"
+        const val DE_KEY_REMOTE_CAPTURE_WANTED = "remote_capture_wanted"
 
         fun updateDeBootFlag(context: Context, enabled: Boolean) {
             try {
@@ -83,6 +84,9 @@ class BootReceiver : BroadcastReceiver() {
 
             // Outbound MDM agent — independent of auto-launch / kiosk
             startMdmAgentIfEnabled(context)
+
+            // Keep Device Owner screen-capture policy aligned with persisted remote-screenshot preference
+            syncRemoteCapturePolicyOnBoot(context)
 
             // Check if auto-launch is enabled before doing anything else
             if (!isAutoLaunchEnabled(context)) {
@@ -195,6 +199,43 @@ class BootReceiver : BroadcastReceiver() {
      * Start KioskWatchdogService if kiosk mode is enabled (#96).
      * The service uses START_STICKY so Android restarts it after OOM kills.
      */
+    /**
+     * Mirror AsyncStorage remote-screenshot preference into native DE/CE prefs so
+     * Device Owner policy allows capture before React Native loads.
+     */
+    private fun syncRemoteCapturePolicyOnBoot(context: Context) {
+        try {
+            val wantedFromStorage = readAsyncStorageBoolean(context, "@kiosk_rest_api_remote_screenshot")
+            if (wantedFromStorage) {
+                ScreenCaptureManager.setRemoteCaptureWanted(context, true)
+            }
+            ScreenCaptureManager.syncDeviceOwnerScreenCapturePolicy(context)
+            DebugLog.d(
+                "BootReceiver",
+                "Remote capture boot sync: storage=$wantedFromStorage, wanted=${ScreenCaptureManager.isRemoteCaptureWanted(context)}"
+            )
+        } catch (e: Exception) {
+            DebugLog.errorProduction("BootReceiver", "Remote capture boot sync failed: ${e.message}")
+        }
+    }
+
+    private fun readAsyncStorageBoolean(context: Context, key: String): Boolean {
+        return try {
+            val dbPath = context.getDatabasePath("RKStorage").absolutePath
+            val db = SQLiteDatabase.openDatabase(dbPath, null, SQLiteDatabase.OPEN_READONLY)
+            val cursor = db.rawQuery(
+                "SELECT value FROM catalystLocalStorage WHERE key = ?",
+                arrayOf(key)
+            )
+            val value = if (cursor.moveToFirst()) cursor.getString(0) == "true" else false
+            cursor.close()
+            db.close()
+            value
+        } catch (e: Exception) {
+            false
+        }
+    }
+
     private fun startMdmAgentIfEnabled(context: Context) {
         if (!com.freekiosk.mdm.MdmAgentPrefs.isEnabled(context)) return
         if (com.freekiosk.mdm.MdmAgentPrefs.getWsUrl(context).isNullOrBlank()) return

@@ -232,26 +232,26 @@ const DisplayTab: React.FC<DisplayTabProps> = ({
 
   return (
     <View>
-      {/* App Brightness Control toggle - WebView mode only (external app mode doesn't manage brightness) */}
-      {displayMode !== 'external_app' && (
-        <SettingsSection title="Brightness Control" icon="brightness-6">
-          <SettingsSwitch
-            label="App Brightness Control"
-            hint={brightnessManagementEnabled
-              ? "FreeKiosk manages screen brightness"
-              : "System manages brightness (Tasker, Android settings, etc.)"}
-            value={brightnessManagementEnabled}
-            onValueChange={onBrightnessManagementEnabledChange}
-          />
-          {!brightnessManagementEnabled && (
-            <SettingsInfoBox variant="info">
-              <Text style={styles.infoText}>
-                💡 Brightness is managed by the system. External tools like Tasker can control brightness without interference from FreeKiosk.
-              </Text>
-            </SettingsInfoBox>
-          )}
-        </SettingsSection>
-      )}
+      {/* App Brightness Control — shown in all display modes (MDM/API use system brightness) */}
+      <SettingsSection title="Brightness Control" icon="brightness-6">
+        <SettingsSwitch
+          label="App Brightness Control"
+          hint={brightnessManagementEnabled
+            ? displayMode === 'external_app'
+              ? "FreeKiosk and launched apps follow MDM/API brightness"
+              : "FreeKiosk manages screen brightness"
+            : "System manages brightness (Tasker, Android settings, etc.)"}
+          value={brightnessManagementEnabled}
+          onValueChange={onBrightnessManagementEnabledChange}
+        />
+        {!brightnessManagementEnabled && (
+          <SettingsInfoBox variant="info">
+            <Text style={styles.infoText}>
+              💡 Brightness is managed by the system. External tools like Tasker can control brightness without interference from FreeKiosk.
+            </Text>
+          </SettingsInfoBox>
+        )}
+      </SettingsSection>
 
       {/* Default Brightness - Only in WebView mode and when app manages brightness */}
       {displayMode !== 'external_app' && brightnessManagementEnabled && (

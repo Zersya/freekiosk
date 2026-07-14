@@ -1,5 +1,7 @@
 package com.freekiosk
 
+import android.app.admin.DevicePolicyManager
+import android.content.ComponentName
 import android.content.Context
 import android.hardware.Sensor
 import android.hardware.SensorEvent
@@ -183,6 +185,11 @@ class AutoBrightnessModule(private val reactContext: ReactApplicationContext) :
     @ReactMethod
     fun getBrightnessLevel(promise: Promise) {
         try {
+            getSystemBrightness()?.let {
+                promise.resolve(it.toDouble())
+                return
+            }
+
             val activity = reactContext.currentActivity
             if (activity == null) {
                 promise.resolve(lastBrightnessValue.takeIf { it >= 0f }?.toDouble() ?: 0.5)
@@ -327,24 +334,108 @@ class AutoBrightnessModule(private val reactContext: ReactApplicationContext) :
     }
 
     /**
-     * Apply brightness to screen using Settings API
+     * Apply brightness system-wide so it affects launched kiosk apps, not only FreeKiosk's window.
+     * Falls back to per-window brightness when system settings cannot be changed.
      */
     private fun applyBrightness(brightness: Float) {
+        val normalized = brightness.coerceIn(0f, 1f)
         try {
+            if (setSystemBrightness(normalized)) {
+                clearWindowBrightnessOverride()
+                return
+            }
+
             val activity = reactContext.currentActivity ?: return
-            
             activity.runOnUiThread {
                 try {
                     val window = activity.window
                     val layoutParams = window.attributes
-                    layoutParams.screenBrightness = brightness.coerceIn(0.01f, 1f)
+                    layoutParams.screenBrightness = if (normalized <= 0f) 0.001f else normalized.coerceAtLeast(0.01f)
                     window.attributes = layoutParams
                 } catch (e: Exception) {
-                    Log.e(TAG, "Failed to apply brightness", e)
+                    Log.e(TAG, "Failed to apply window brightness", e)
                 }
             }
         } catch (e: Exception) {
             Log.e(TAG, "Failed to apply brightness", e)
+        }
+    }
+
+    private fun getSystemBrightness(): Float? {
+        return try {
+            val raw = Settings.System.getInt(
+                reactContext.contentResolver,
+                Settings.System.SCREEN_BRIGHTNESS,
+                -1
+            )
+            if (raw < 0) null else raw / 255f
+        } catch (e: Exception) {
+            Log.w(TAG, "Failed to read system brightness: ${e.message}")
+            null
+        }
+    }
+
+    private fun setSystemBrightness(brightness: Float): Boolean {
+        val systemValue = if (brightness <= 0f) {
+            0
+        } else {
+            (brightness * 255f).toInt().coerceIn(1, 255)
+        }
+
+        return try {
+            if (isDeviceOwner()) {
+                val dpm = reactContext.getSystemService(Context.DEVICE_POLICY_SERVICE) as DevicePolicyManager
+                val admin = ComponentName(reactContext, DeviceAdminReceiver::class.java)
+                dpm.setSystemSetting(
+                    admin,
+                    Settings.System.SCREEN_BRIGHTNESS_MODE,
+                    Settings.System.SCREEN_BRIGHTNESS_MODE_MANUAL.toString()
+                )
+                dpm.setSystemSetting(
+                    admin,
+                    Settings.System.SCREEN_BRIGHTNESS,
+                    systemValue.toString()
+                )
+                Log.d(TAG, "System brightness set via Device Owner: $systemValue/255")
+                true
+            } else if (Settings.System.canWrite(reactContext)) {
+                Settings.System.putInt(
+                    reactContext.contentResolver,
+                    Settings.System.SCREEN_BRIGHTNESS_MODE,
+                    Settings.System.SCREEN_BRIGHTNESS_MODE_MANUAL
+                )
+                Settings.System.putInt(
+                    reactContext.contentResolver,
+                    Settings.System.SCREEN_BRIGHTNESS,
+                    systemValue
+                )
+                Log.d(TAG, "System brightness set via WRITE_SETTINGS: $systemValue/255")
+                true
+            } else {
+                false
+            }
+        } catch (e: Exception) {
+            Log.w(TAG, "Failed to set system brightness: ${e.message}")
+            false
+        }
+    }
+
+    private fun isDeviceOwner(): Boolean {
+        val dpm = reactContext.getSystemService(Context.DEVICE_POLICY_SERVICE) as DevicePolicyManager
+        return dpm.isDeviceOwnerApp(reactContext.packageName)
+    }
+
+    private fun clearWindowBrightnessOverride() {
+        val activity = reactContext.currentActivity ?: return
+        activity.runOnUiThread {
+            try {
+                val window = activity.window
+                val layoutParams = window.attributes
+                layoutParams.screenBrightness = android.view.WindowManager.LayoutParams.BRIGHTNESS_OVERRIDE_NONE
+                window.attributes = layoutParams
+            } catch (e: Exception) {
+                Log.w(TAG, "Failed to clear window brightness override: ${e.message}")
+            }
         }
     }
 

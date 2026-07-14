@@ -489,6 +489,11 @@ class MainActivity : ReactActivity() {
       registerVolumeChangeReceiver()
     }
 
+    // Re-request MediaProjection once per process when the user preference is still on.
+    Handler(Looper.getMainLooper()).postDelayed({
+      ScreenCaptureModule.tryRestoreRemoteCaptureIfNeeded(this)
+    }, 2500)
+
     // Vérifier si c'est un retour volontaire (depuis l'intent de l'overlay - 5 taps)
     val voluntaryReturn = intent?.getBooleanExtra("voluntaryReturn", false) ?: false
     val navigateToPin = intent?.getBooleanExtra("navigateToPin", false) ?: false

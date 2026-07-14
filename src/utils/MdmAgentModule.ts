@@ -45,6 +45,13 @@ class MdmAgentService {
     }
     return MdmAgentModule.getAgentInfo();
   }
+
+  async clearEnrollment(): Promise<boolean> {
+    if (Platform.OS !== 'android' || !MdmAgentModule) {
+      return false;
+    }
+    return MdmAgentModule.clearEnrollment();
+  }
 }
 
 export const mdmAgent = new MdmAgentService();
