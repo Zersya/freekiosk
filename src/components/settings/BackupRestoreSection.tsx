@@ -1,5 +1,5 @@
 /**
- * FreeKiosk v1.3 - BackupRestoreSection Component
+ * TransKIOSK v1.3 - BackupRestoreSection Component
  * UI component for backup and restore functionality
  */
 
@@ -126,7 +126,7 @@ const BackupRestoreSection: React.FC<BackupRestoreSectionProps> = ({
         } else {
           Alert.alert(
             '❌ Invalid Backup',
-            parsed.error || 'The selected file is not a valid FreeKiosk backup.',
+            parsed.error || 'The selected file is not a valid TransKIOSK backup.',
             [{ text: 'OK' }]
           );
         }

@@ -652,7 +652,7 @@ export const ApiSettingsSection: React.FC<ApiSettingsSectionProps> = ({
             style={styles.installerButton}
             onPress={() => navigation.navigate('Installer')}
           >
-            <Icon name="package-variant" size={16} color="#0066cc" />
+            <Icon name="package-variant" size={16} color="#EF3434" />
             <Text style={styles.installerButtonText}>Open App Installer</Text>
           </TouchableOpacity>
         )}
@@ -663,7 +663,7 @@ export const ApiSettingsSection: React.FC<ApiSettingsSectionProps> = ({
           onChangeText={handleMdmWsUrlChange}
           placeholder="wss://mdm.example.com/api/agent/ws"
           icon="web"
-          hint="Generate an enrollment token in FreeKiosk MDM → Settings"
+          hint="Generate an enrollment token in TransKIOSK MDM → Settings"
           autoCapitalize="none"
         />
 
@@ -835,7 +835,7 @@ const styles = StyleSheet.create({
   installerButtonText: {
     fontSize: 13,
     fontWeight: '600',
-    color: '#0066cc',
+    color: '#EF3434',
     marginLeft: 6,
   },
 });

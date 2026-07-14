@@ -1,5 +1,5 @@
 /**
- * FreeKiosk v1.2 - Display Tab
+ * TransKIOSK v1.2 - Display Tab
  * Brightness, Status Bar, Keyboard settings
  */
 
@@ -246,8 +246,8 @@ const DisplayTab: React.FC<DisplayTabProps> = ({
           label="App Brightness Control"
           hint={brightnessManagementEnabled
             ? displayMode === 'external_app'
-              ? "FreeKiosk and launched apps follow MDM/API brightness"
-              : "FreeKiosk manages screen brightness"
+              ? "TransKIOSK and launched apps follow MDM/API brightness"
+              : "TransKIOSK manages screen brightness"
             : "System manages brightness (Tasker, Android settings, etc.)"}
           value={brightnessManagementEnabled}
           onValueChange={onBrightnessManagementEnabledChange}
@@ -255,7 +255,7 @@ const DisplayTab: React.FC<DisplayTabProps> = ({
         {!brightnessManagementEnabled && (
           <SettingsInfoBox variant="info">
             <Text style={styles.infoText}>
-              💡 Brightness is managed by the system. External tools like Tasker can control brightness without interference from FreeKiosk.
+              💡 Brightness is managed by the system. External tools like Tasker can control brightness without interference from TransKIOSK.
             </Text>
           </SettingsInfoBox>
         )}
@@ -631,7 +631,7 @@ const DisplayTab: React.FC<DisplayTabProps> = ({
                   • After {inactivityDelay || '10'} minute(s) without interaction, the screensaver activates{`
 `}
                   {displayMode === 'external_app'
-                    ? `• FreeKiosk comes to the foreground to show the screensaver; the external app resumes on wake
+                    ? `• TransKIOSK comes to the foreground to show the screensaver; the external app resumes on wake
 `
                     : ''}
                   • Touch the screen to wake the device{`
@@ -950,7 +950,7 @@ const DisplayTab: React.FC<DisplayTabProps> = ({
           />
           <SettingsSwitch
             label="🎙️ 2-way audio (intercom) mode"
-            hint="Enable for WebRTC 2-way audio / talk-back (e.g. a Home Assistant / go2rtc doorbell intercom card). While the web page is actively using the microphone, FreeKiosk switches the device to communication audio mode so the microphone back-channel transmits, then restores normal audio when you stop talking. Leave off for normal browsing — it only engages while the mic is in use."
+            hint="Enable for WebRTC 2-way audio / talk-back (e.g. a Home Assistant / go2rtc doorbell intercom card). While the web page is actively using the microphone, TransKIOSK switches the device to communication audio mode so the microphone back-channel transmits, then restores normal audio when you stop talking. Leave off for normal browsing — it only engages while the mic is in use."
             value={intercomModeEnabled}
             onValueChange={onIntercomModeChange}
           />

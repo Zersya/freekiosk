@@ -1,5 +1,5 @@
 /**
- * FreeKiosk v1.2 - Security Tab
+ * TransKIOSK v1.2 - Security Tab
  * Lock mode, Auto-launch, External app behavior
  */
 
@@ -202,7 +202,7 @@ const SecurityTab: React.FC<SecurityTabProps> = ({
         {kioskEnabled && (displayMode === 'webview' || displayMode === 'media_player') && !isDeviceOwner && (
           <SettingsInfoBox variant="warning">
             <Text style={styles.infoText}>
-              ⚠️ Without Device Owner, users can exit via Back + Recent Apps gesture. Set FreeKiosk as Device Owner for complete lockdown.
+              ⚠️ Without Device Owner, users can exit via Back + Recent Apps gesture. Set TransKIOSK as Device Owner for complete lockdown.
             </Text>
           </SettingsInfoBox>
         )}
@@ -268,7 +268,7 @@ const SecurityTab: React.FC<SecurityTabProps> = ({
       <SettingsSection title="Auto Launch" icon="rocket-launch">
         <SettingsSwitch
           label="Launch on Boot"
-          hint="Automatically launch FreeKiosk when the device starts"
+          hint="Automatically launch TransKIOSK when the device starts"
           value={autoLaunchEnabled}
           onValueChange={onAutoLaunchChange}
         />
@@ -292,14 +292,14 @@ const SecurityTab: React.FC<SecurityTabProps> = ({
             <View style={styles.divider} />
             <SettingsSwitch
               label="🔐 System screen-lock compatibility"
-              hint="Enable ONLY if you set a native Android screen-lock (PIN/password) on this device. FreeKiosk then (1) steps aside for the secure lock screen at boot instead of locking immediately — preventing the reboot freeze caused by the conflict between the kiosk and the secure lock screen — and (2) keeps the system keyguard active while pinned, so the screen-lock actually prompts after the screen turns off and back on (without this, lock-task mode disables the keyguard and the password never appears). ⚠️ A system screen-lock means someone must enter the password on the device after every reboot before the kiosk starts, and on every wake — unsuitable for unattended devices. For device security, the FreeKiosk exit PIN + Device Owner is usually the better choice."
+              hint="Enable ONLY if you set a native Android screen-lock (PIN/password) on this device. TransKIOSK then (1) steps aside for the secure lock screen at boot instead of locking immediately — preventing the reboot freeze caused by the conflict between the kiosk and the secure lock screen — and (2) keeps the system keyguard active while pinned, so the screen-lock actually prompts after the screen turns off and back on (without this, lock-task mode disables the keyguard and the password never appears). ⚠️ A system screen-lock means someone must enter the password on the device after every reboot before the kiosk starts, and on every wake — unsuitable for unattended devices. For device security, the TransKIOSK exit PIN + Device Owner is usually the better choice."
               value={screenLockCompatEnabled}
               onValueChange={onScreenLockCompatChange}
             />
             {screenLockCompatEnabled && (
               <SettingsInfoBox variant="warning">
                 <Text style={styles.infoText}>
-                  ⚠️ With a native screen-lock set, the device will require the password to be entered manually after every reboot before FreeKiosk launches. This has no effect unless an Android screen-lock is actually configured.
+                  ⚠️ With a native screen-lock set, the device will require the password to be entered manually after every reboot before TransKIOSK launches. This has no effect unless an Android screen-lock is actually configured.
                 </Text>
               </SettingsInfoBox>
             )}
@@ -309,10 +309,10 @@ const SecurityTab: React.FC<SecurityTabProps> = ({
         {/* Default launcher / persistent Home (#199) — works with or without Device Owner */}
         <View style={styles.divider} />
         <SettingsSwitch
-          label="🏠 Set FreeKiosk as default launcher"
+          label="🏠 Set TransKIOSK as default launcher"
           hint={isDeviceOwner
-            ? "Makes FreeKiosk the persistent Home app via Device Owner. The system then relaunches FreeKiosk by itself after every reboot and system update, without relying on the OEM 'Appear on top' / Autostart permissions that some brands (e.g. Samsung) reset on OS updates — the main cause of the kiosk dropping out after a reboot/update. The Home button also returns here. Turning this off restores your normal launcher."
-            : "Opens the system Home-app picker so you can set FreeKiosk as the default launcher. The system then relaunches FreeKiosk at boot. Without Device Owner this choice is not locked — the user can change it back and some brands may reset it on a system update (Device Owner makes it permanent)."}
+            ? "Makes TransKIOSK the persistent Home app via Device Owner. The system then relaunches TransKIOSK by itself after every reboot and system update, without relying on the OEM 'Appear on top' / Autostart permissions that some brands (e.g. Samsung) reset on OS updates — the main cause of the kiosk dropping out after a reboot/update. The Home button also returns here. Turning this off restores your normal launcher."
+            : "Opens the system Home-app picker so you can set TransKIOSK as the default launcher. The system then relaunches TransKIOSK at boot. Without Device Owner this choice is not locked — the user can change it back and some brands may reset it on a system update (Device Owner makes it permanent)."}
           value={defaultLauncherEnabled}
           onValueChange={onDefaultLauncherChange}
         />
@@ -320,8 +320,8 @@ const SecurityTab: React.FC<SecurityTabProps> = ({
           <SettingsInfoBox variant="warning">
             <Text style={styles.infoText}>
               {isDeviceOwner
-                ? '⚠️ FreeKiosk becomes the device Home/launcher. If the app were to crash on launch there is no fallback launcher, so test on one device before fleet rollout. Disabling this (or removing Device Owner) restores the normal launcher.'
-                : '⚠️ Pick FreeKiosk in the Home-app screen that opens. This is not enforced without Device Owner and may be reset by a system update. To remove it later, choose another launcher in the same system screen.'}
+                ? '⚠️ TransKIOSK becomes the device Home/launcher. If the app were to crash on launch there is no fallback launcher, so test on one device before fleet rollout. Disabling this (or removing Device Owner) restores the normal launcher.'
+                : '⚠️ Pick TransKIOSK in the Home-app screen that opens. This is not enforced without Device Owner and may be reset by a system update. To remove it later, choose another launcher in the same system screen.'}
             </Text>
           </SettingsInfoBox>
         )}

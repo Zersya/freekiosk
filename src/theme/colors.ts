@@ -1,13 +1,13 @@
 /**
- * FreeKiosk v1.2 - Color Palette
- * Centralized color system for consistent UI
+ * TransKIOSK - Color Palette
+ * TransTRACK brand colors (transtrack.id)
  */
 
 export const Colors = {
-  // Primary brand colors
-  primary: '#0066cc',
-  primaryLight: '#e3f2fd',
-  primaryDark: '#004999',
+  // Primary brand colors (TransTRACK red)
+  primary: '#EF3434',
+  primaryLight: '#FDEBEB',
+  primaryDark: '#C62828',
 
   // Secondary accent
   secondary: '#4CAF50',
@@ -37,7 +37,7 @@ export const Colors = {
   surfaceVariant: '#fafafa',
 
   // Text colors
-  textPrimary: '#333333',
+  textPrimary: '#101828',
   textSecondary: '#666666',
   textHint: '#999999',
   textDisabled: '#cccccc',
@@ -50,20 +50,20 @@ export const Colors = {
 
   // Specific UI elements
   switchTrackOff: '#767577',
-  switchTrackOn: '#81b0ff',
+  switchTrackOn: '#F5A5A5',
   switchThumbOff: '#f4f3f4',
 
   // Shadows
   shadow: '#000000',
 
   // Tab specific
-  tabActive: '#0066cc',
+  tabActive: '#EF3434',
   tabInactive: '#999999',
-  tabIndicator: '#0066cc',
+  tabIndicator: '#EF3434',
 
   // Card backgrounds by type
   cardDefault: '#ffffff',
-  cardInfo: '#e3f2fd',
+  cardInfo: '#FDEBEB',
   cardWarning: '#fff3e0',
   cardError: '#ffebee',
   cardSuccess: '#e8f5e9',

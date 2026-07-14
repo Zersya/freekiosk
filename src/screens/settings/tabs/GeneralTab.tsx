@@ -1,5 +1,5 @@
 /**
- * FreeKiosk v1.2 - General Tab
+ * TransKIOSK v1.2 - General Tab
  * Display mode, URL/App selection, PIN configuration
  */
 
@@ -595,7 +595,7 @@ const GeneralTab: React.FC<GeneralTabProps> = ({
           )}
           <SettingsInfoBox variant="info">
             <Text style={styles.infoText}>
-              When a website returns a 401 Unauthorized response, FreeKiosk will automatically reply with these credentials. Leave username empty to disable.
+              When a website returns a 401 Unauthorized response, TransKIOSK will automatically reply with these credentials. Leave username empty to disable.
             </Text>
           </SettingsInfoBox>
         </SettingsSection>
@@ -797,8 +797,8 @@ const GeneralTab: React.FC<GeneralTabProps> = ({
                 </Text>
                 <Text style={styles.permissionHint}>
                   {hasUsageStatsPermission
-                    ? "Auto-relaunch monitoring is active. FreeKiosk can detect when the external app closes."
-                    : "Required for auto-relaunch. Without this, FreeKiosk cannot detect when the external app closes or crashes."}
+                    ? "Auto-relaunch monitoring is active. TransKIOSK can detect when the external app closes."
+                    : "Required for auto-relaunch. Without this, TransKIOSK cannot detect when the external app closes or crashes."}
                 </Text>
               </View>
             </View>

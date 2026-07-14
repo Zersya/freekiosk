@@ -237,7 +237,7 @@ const ExternalAppOverlay: React.FC<ExternalAppOverlayProps> = ({
             style={styles.miniLogo}
             resizeMode="contain"
           />
-          <Text style={styles.multiAppTitle}>FreeKiosk</Text>
+          <Text style={styles.multiAppTitle}>TransKIOSK</Text>
         </View>
         <FlatList
           data={homeScreenApps}
@@ -306,7 +306,7 @@ const ExternalAppOverlay: React.FC<ExternalAppOverlayProps> = ({
           </View>
 
           {/* Title */}
-          <Text style={styles.title}>FreeKiosk</Text>
+          <Text style={styles.title}>TransKIOSK</Text>
           <Text style={styles.subtitle}>External App Mode</Text>
 
           {/* Status Message */}
@@ -333,7 +333,7 @@ const ExternalAppOverlay: React.FC<ExternalAppOverlayProps> = ({
                 <Text style={styles.warningIcon}>🧪</Text>
                 <Text style={styles.warningTitle}>Test Mode Active</Text>
                 <Text style={styles.warningText}>
-                  You can use the Android back button to return to FreeKiosk.
+                  You can use the Android back button to return to TransKIOSK.
                 </Text>
               </View>
             </View>
@@ -375,7 +375,7 @@ const ExternalAppOverlay: React.FC<ExternalAppOverlayProps> = ({
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#0066cc',
+    backgroundColor: '#402626',
   },
   scrollContent: {
     flexGrow: 1,
@@ -396,11 +396,11 @@ const styles = StyleSheet.create({
     width: 120,
     height: 120,
     borderRadius: 60,
-    backgroundColor: 'rgba(255, 255, 255, 0.2)',
+    backgroundColor: 'rgba(255, 255, 255, 0.12)',
     justifyContent: 'center',
     alignItems: 'center',
-    borderWidth: 3,
-    borderColor: 'rgba(255, 255, 255, 0.4)',
+    borderWidth: 1,
+    borderColor: 'rgba(255, 255, 255, 0.25)',
   },
   logoImage: {
     width: 80,
@@ -493,7 +493,7 @@ const styles = StyleSheet.create({
     elevation: 8,
   },
   primaryButtonText: {
-    color: '#0066cc',
+    color: '#402626',
     fontSize: 18,
     fontWeight: 'bold',
   },

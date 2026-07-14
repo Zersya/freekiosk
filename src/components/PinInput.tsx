@@ -416,7 +416,7 @@ const styles = StyleSheet.create({
     width: '80%',
     height: 60,
     borderWidth: 2,
-    borderColor: '#0066cc',
+    borderColor: '#EF3434',
     borderRadius: 8,
     paddingHorizontal: 20,
     fontSize: 24,
@@ -432,7 +432,7 @@ const styles = StyleSheet.create({
     opacity: 0.6,
   },
   button: {
-    backgroundColor: '#0066cc',
+    backgroundColor: '#EF3434',
     paddingHorizontal: 50,
     paddingVertical: 15,
     borderRadius: 8,

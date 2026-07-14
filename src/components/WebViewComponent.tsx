@@ -369,7 +369,7 @@ const WebViewComponent = forwardRef<WebViewComponentRef, WebViewComponentProps>(
       localStorage.setItem('__test__', '1');
       localStorage.removeItem('__test__');
     } catch(e) {
-      console.error('[FreeKiosk] localStorage FAILED:', e);
+      console.error('[TransKIOSK] localStorage FAILED:', e);
     }
 
     // Intercept window.print() to use native Android print (only when printing is enabled)
@@ -433,7 +433,7 @@ const WebViewComponent = forwardRef<WebViewComponentRef, WebViewComponentProps>(
 
     // ==================== speechSynthesis Polyfill ====================
     // Android WebView does not implement the Web Speech API (speechSynthesis).
-    // This polyfill bridges window.speechSynthesis.speak() to FreeKiosk's native
+    // This polyfill bridges window.speechSynthesis.speak() to TransKIOSK's native
     // Android TextToSpeech engine via postMessage → React Native → NativeModules.
     // It also enumerates real TTS voices (Google TTS etc.) via async query.
     // This allows web apps that use TTS to work transparently in kiosk mode.
@@ -488,7 +488,7 @@ const WebViewComponent = forwardRef<WebViewComponentRef, WebViewComponentProps>(
             synth.speak(u);
           }
         } catch(e) {
-          console.error('[FreeKiosk] Failed to parse voices:', e);
+          console.error('[TransKIOSK] Failed to parse voices:', e);
         }
       };
 
@@ -750,7 +750,7 @@ const WebViewComponent = forwardRef<WebViewComponentRef, WebViewComponentProps>(
           }
         } else if (data.type === 'PRINT_REQUEST') {
           // Handle print request from window.print()
-          PrintModule.printWebView(data.title || 'FreeKiosk Print', data.paperSize || 'A4')
+          PrintModule.printWebView(data.title || 'TransKIOSK Print', data.paperSize || 'A4')
             .then(() => console.log('[WebView] Print job started'))
             .catch((err: any) => console.error('[WebView] Print failed:', err));
         } else if (data.type === 'PDF_VIEWER_CLOSE') {
@@ -769,7 +769,7 @@ const WebViewComponent = forwardRef<WebViewComponentRef, WebViewComponentProps>(
   };
 
   const handleError = (event: WebViewErrorEvent): void => {
-    console.error('[FreeKiosk] WebView error:', event.nativeEvent);
+    console.error('[TransKIOSK] WebView error:', event.nativeEvent);
     setError(true);
     setLoading(false);
     
@@ -789,7 +789,7 @@ const WebViewComponent = forwardRef<WebViewComponentRef, WebViewComponentProps>(
   const handleHttpError = (event: any): void => {
     const statusCode = event.nativeEvent.statusCode;
     const failedUrl = event.nativeEvent.url;
-    console.error('[FreeKiosk] HTTP Error:', statusCode, failedUrl);
+    console.error('[TransKIOSK] HTTP Error:', statusCode, failedUrl);
 
     // Only treat the error as fatal when it comes from the main document.
     // onReceivedHttpError also fires for sub-resources (images, scripts,
@@ -823,7 +823,7 @@ const WebViewComponent = forwardRef<WebViewComponentRef, WebViewComponentProps>(
   // full remount (same recovery pattern as inactivity return / planner).
   const handleRenderProcessGone = (event: WebViewRenderProcessGoneEvent): void => {
     const didCrash = !!event?.nativeEvent?.didCrash;
-    console.error('[FreeKiosk] WebView renderer process gone (didCrash=' + didCrash + '), recovering...');
+    console.error('[TransKIOSK] WebView renderer process gone (didCrash=' + didCrash + '), recovering...');
     try {
       webViewRef.current?.clearCache(true);
     } catch {
@@ -846,7 +846,7 @@ const WebViewComponent = forwardRef<WebViewComponentRef, WebViewComponentProps>(
 
   const handleOpenGitHub = (): void => {
     Linking.openURL('https://github.com/rushb-fr/freekiosk').catch(err =>
-      console.error('[FreeKiosk] Failed to open GitHub URL:', err)
+      console.error('[TransKIOSK] Failed to open GitHub URL:', err)
     );
   };
 
@@ -871,7 +871,7 @@ const WebViewComponent = forwardRef<WebViewComponentRef, WebViewComponentProps>(
             </View>
 
             {/* Title */}
-            <Text style={styles.welcomeTitle}>FreeKiosk</Text>
+            <Text style={styles.welcomeTitle}>TransKIOSK</Text>
             <Text style={styles.welcomeSubtitle}>
               Professional Kiosk Application
             </Text>
@@ -1013,7 +1013,7 @@ const WebViewComponent = forwardRef<WebViewComponentRef, WebViewComponentProps>(
           
           if (urlLower.startsWith('file://') ||
               urlLower.startsWith('javascript:')) {
-            console.warn('[FreeKiosk] Blocked dangerous URL scheme:', request.url);
+            console.warn('[TransKIOSK] Blocked dangerous URL scheme:', request.url);
             return false;
           }
           
@@ -1021,10 +1021,10 @@ const WebViewComponent = forwardRef<WebViewComponentRef, WebViewComponentProps>(
           // generate print content as data:text/html popups)
           if (urlLower.startsWith('data:')) {
             if (printEnabled) {
-              console.log('[FreeKiosk] Allowing data: URL (printing enabled)');
+              console.log('[TransKIOSK] Allowing data: URL (printing enabled)');
               return true;
             }
-            console.warn('[FreeKiosk] Blocked data: URL (printing disabled):', request.url.substring(0, 100));
+            console.warn('[TransKIOSK] Blocked data: URL (printing disabled):', request.url.substring(0, 100));
             return false;
           }
 
@@ -1063,7 +1063,7 @@ const WebViewComponent = forwardRef<WebViewComponentRef, WebViewComponentProps>(
             }
 
             if (pdfUrl) {
-              console.log('[FreeKiosk] PDF detected, opening in viewer:', pdfUrl);
+              console.log('[TransKIOSK] PDF detected, opening in viewer:', pdfUrl);
               const viewerUrl = `file:///android_asset/pdfjs/viewer.html?file=${encodeURIComponent(pdfUrl)}`;
               if (webViewRef.current) {
                 webViewRef.current.injectJavaScript(
@@ -1139,7 +1139,7 @@ const WebViewComponent = forwardRef<WebViewComponentRef, WebViewComponentProps>(
             const popupLower = nativeEvent.targetUrl.toLowerCase();
             const popupPath = popupLower.split('?')[0].split('#')[0];
             if (popupPath.endsWith('.pdf')) {
-              console.log('[FreeKiosk] PDF popup detected, opening in viewer:', nativeEvent.targetUrl);
+              console.log('[TransKIOSK] PDF popup detected, opening in viewer:', nativeEvent.targetUrl);
               const viewerUrl = `file:///android_asset/pdfjs/viewer.html?file=${encodeURIComponent(nativeEvent.targetUrl)}`;
               if (webViewRef.current) {
                 webViewRef.current.injectJavaScript(
@@ -1183,7 +1183,7 @@ const WebViewComponent = forwardRef<WebViewComponentRef, WebViewComponentProps>(
       
       {loading && !error && (
         <View style={styles.loadingContainer}>
-          <ActivityIndicator size="large" color="#0066cc" />
+          <ActivityIndicator size="large" color="#402626" />
           <Text style={styles.loadingText}>Loading...</Text>
           {/* Fallback settings button inside loading overlay */}
           <TouchableOpacity
@@ -1253,7 +1253,7 @@ const styles = StyleSheet.create({
   // WELCOME SCREEN STYLES
   welcomeContainer: {
     flex: 1,
-    backgroundColor: '#0066cc',
+    backgroundColor: '#402626',
   },
   scrollContent: {
     flexGrow: 1,
@@ -1274,11 +1274,11 @@ const styles = StyleSheet.create({
     width: 120,
     height: 120,
     borderRadius: 60,
-    backgroundColor: 'rgba(255, 255, 255, 0.2)',
+    backgroundColor: 'rgba(255, 255, 255, 0.12)',
     justifyContent: 'center',
     alignItems: 'center',
-    borderWidth: 3,
-    borderColor: 'rgba(255, 255, 255, 0.4)',
+    borderWidth: 1,
+    borderColor: 'rgba(255, 255, 255, 0.25)',
   },
   logoImage: {
     width: 80,
@@ -1288,13 +1288,13 @@ const styles = StyleSheet.create({
   welcomeTitle: {
     fontSize: 42,
     fontWeight: 'bold',
-    color: '#fff',
+    color: '#FFFFFF',
     marginBottom: 8,
     textAlign: 'center',
   },
   welcomeSubtitle: {
     fontSize: 18,
-    color: 'rgba(255, 255, 255, 0.9)',
+    color: 'rgba(255, 255, 255, 0.85)',
     marginBottom: 48,
     textAlign: 'center',
   },
@@ -1305,11 +1305,13 @@ const styles = StyleSheet.create({
   featureItem: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: 'rgba(255, 255, 255, 0.15)',
+    backgroundColor: 'rgba(255, 255, 255, 0.1)',
     paddingVertical: 16,
     paddingHorizontal: 20,
     borderRadius: 12,
     marginBottom: 12,
+    borderWidth: 1,
+    borderColor: 'rgba(255, 255, 255, 0.15)',
   },
   featureIcon: {
     fontSize: 24,
@@ -1336,7 +1338,7 @@ const styles = StyleSheet.create({
     marginBottom: 24,
   },
   setupButtonText: {
-    color: '#0066cc',
+    color: '#402626',
     fontSize: 18,
     fontWeight: 'bold',
   },
@@ -1429,7 +1431,7 @@ const styles = StyleSheet.create({
     textAlign: 'center' 
   },
   reloadButton: { 
-    backgroundColor: '#0066cc', 
+    backgroundColor: '#402626', 
     paddingHorizontal: 30, 
     paddingVertical: 15, 
     borderRadius: 8,

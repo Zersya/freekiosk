@@ -94,7 +94,7 @@ export default function AudioOutputDialog({ visible, onClose }: Props) {
           <Text style={styles.title}>Audio Output</Text>
 
           {isLoading && !audioInfo ? (
-            <ActivityIndicator color="#0066cc" />
+            <ActivityIndicator color="#EF3434" />
           ) : (
             <>
               {outputs.map((out) => {
@@ -162,7 +162,7 @@ const styles = StyleSheet.create({
     backgroundColor: '#fafafa',
   },
   rowActive: {
-    borderColor: '#0066cc',
+    borderColor: '#EF3434',
     backgroundColor: '#eaf3ff',
   },
   rowIcon: {
@@ -179,7 +179,7 @@ const styles = StyleSheet.create({
     color: '#004f9e',
   },
   check: {
-    color: '#0066cc',
+    color: '#EF3434',
     fontSize: 18,
     fontWeight: '700',
   },

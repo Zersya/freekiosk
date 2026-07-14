@@ -1,5 +1,5 @@
 /**
- * FreeKiosk v1.2 - New Settings Screen
+ * TransKIOSK v1.2 - New Settings Screen
  * Material Design tabs with organized sections
  */
 
@@ -844,7 +844,7 @@ const SettingsScreenNew: React.FC<SettingsScreenProps> = ({ navigation }) => {
     }
   };
 
-  // #199 — opt-in: when ON and a native screen-lock is set, FreeKiosk steps aside for the
+  // #199 — opt-in: when ON and a native screen-lock is set, TransKIOSK steps aside for the
   // secure keyguard at boot instead of fast-boot-locking over it (avoids the reboot freeze).
   const toggleScreenLockCompat = async (value: boolean) => {
     setScreenLockCompatEnabled(value);
@@ -858,7 +858,7 @@ const SettingsScreenNew: React.FC<SettingsScreenProps> = ({ navigation }) => {
     }
   };
 
-  // #199 — opt-in: make FreeKiosk the Home launcher so the system relaunches it after
+  // #199 — opt-in: make TransKIOSK the Home launcher so the system relaunches it after
   // reboots/OS updates without depending on OEM autostart permissions. With Device Owner the
   // policy is locked/automatic; without it we open the system Home-app picker (manual, not
   // enforced — see SecurityTab hint).
@@ -870,7 +870,7 @@ const SettingsScreenNew: React.FC<SettingsScreenProps> = ({ navigation }) => {
         // Apply/clear the persistent Device Owner launcher policy immediately.
         await KioskModule.setDefaultLauncherMode(value);
       } else if (value) {
-        // No Device Owner: send the user to the system Home-app picker to choose FreeKiosk.
+        // No Device Owner: send the user to the system Home-app picker to choose TransKIOSK.
         await KioskModule.openAndroidSettings('home');
       }
     } catch (error) {
@@ -1173,7 +1173,7 @@ const SettingsScreenNew: React.FC<SettingsScreenProps> = ({ navigation }) => {
       if (!canInstall) {
         Alert.alert(
           '⚠️ Permission Required',
-          'FreeKiosk needs permission to install updates.\n\nPlease enable "Allow from this source" on the next screen, then come back and try the update again.',
+          'TransKIOSK needs permission to install updates.\n\nPlease enable "Allow from this source" on the next screen, then come back and try the update again.',
           [
             { text: 'Cancel', style: 'cancel' },
             {
@@ -1184,7 +1184,7 @@ const SettingsScreenNew: React.FC<SettingsScreenProps> = ({ navigation }) => {
                 } catch (error: any) {
                   Alert.alert(
                     'Settings Unavailable',
-                    'This device does not support enabling app installs from settings.\n\nAlternative: connect via ADB and run:\nadb install -r FreeKiosk-<version>.apk',
+                    'This device does not support enabling app installs from settings.\n\nAlternative: connect via ADB and run:\nadb install -r TransKIOSK-<version>.apk',
                   );
                 }
               },
@@ -1216,7 +1216,7 @@ const SettingsScreenNew: React.FC<SettingsScreenProps> = ({ navigation }) => {
       if (error?.code === 'INSTALL_PERMISSION' || errorMsg.includes('unknown sources')) {
         Alert.alert(
           '⚠️ Install Permission Needed',
-          'The update was downloaded but cannot be installed.\n\nPlease enable "Install from unknown sources" for FreeKiosk in your device settings, then try again.\n\nOn restricted devices (e.g. Echo Show), use:\nadb install -r <apk>',
+          'The update was downloaded but cannot be installed.\n\nPlease enable "Install from unknown sources" for TransKIOSK in your device settings, then try again.\n\nOn restricted devices (e.g. Echo Show), use:\nadb install -r <apk>',
         );
       } else {
         Alert.alert('Error', `Download failed:\n\n${errorMsg}`);
@@ -1759,7 +1759,7 @@ const SettingsScreenNew: React.FC<SettingsScreenProps> = ({ navigation }) => {
               
               Alert.alert(
                 'Success',
-                'Device Owner removed!\n\nYou can now uninstall FreeKiosk normally.',
+                'Device Owner removed!\n\nYou can now uninstall TransKIOSK normally.',
                 [{ text: 'OK', onPress: () => { revokeSettingsAccess(); navigation.reset({ index: 0, routes: [{ name: 'Kiosk' }] }); } }]
               );
             } catch (error: any) {

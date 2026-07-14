@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <color name="transtrack_primary">#EF3434</color>
+    <color name="transtrack_primary_dark">#C62828</color>
+    <color name="transtrack_primary_light">#FDEBEB</color>
+    <color name="transtrack_text">#101828</color>
+</resources>

@@ -329,7 +329,7 @@ export default function BluetoothDialog({ visible, onClose }: Props) {
           </Text>
         </View>
         {isPairing ? (
-          <ActivityIndicator color="#0066cc" size="small" />
+          <ActivityIndicator color="#EF3434" size="small" />
         ) : (
           <Text style={styles.pairBtn}>Pair ›</Text>
         )}
@@ -365,7 +365,7 @@ export default function BluetoothDialog({ visible, onClose }: Props) {
             <View style={styles.toggleRow}>
               <Text style={styles.toggleLabel}>Bluetooth</Text>
               {togglingBt ? (
-                <ActivityIndicator color="#0066cc" />
+                <ActivityIndicator color="#EF3434" />
               ) : (
                 <Switch
                   value={btInfo?.isEnabled ?? false}

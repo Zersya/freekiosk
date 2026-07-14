@@ -1,5 +1,5 @@
 /**
- * FreeKiosk v1.2 - Advanced Tab
+ * TransKIOSK v1.2 - Advanced Tab
  * SSL Certificates, Updates, Reset, Device Owner, REST API
  */
 
@@ -253,8 +253,8 @@ const AdvancedTab: React.FC<AdvancedTabProps> = ({
 
         <SettingsInfoBox variant="info" title="ℹ️ Why is this needed?">
           <Text style={styles.infoText}>
-            The Accessibility Service allows FreeKiosk to send keyboard input (remote control, text input) to external apps.{'\n\n'}
-            Without it, keyboard emulation only works inside FreeKiosk's own WebView.
+            The Accessibility Service allows TransKIOSK to send keyboard input (remote control, text input) to external apps.{'\n\n'}
+            Without it, keyboard emulation only works inside TransKIOSK's own WebView.
           </Text>
         </SettingsInfoBox>
 
@@ -277,7 +277,7 @@ const AdvancedTab: React.FC<AdvancedTabProps> = ({
             <Text style={styles.hint}>
               {isDeviceOwner
                 ? 'Device Owner mode can enable the service automatically if the WRITE_SECURE_SETTINGS permission has been granted via ADB. Otherwise, enable it manually in Android settings.'
-                : 'Enable "FreeKiosk" in Settings → Accessibility → Installed Services.'}
+                : 'Enable "TransKIOSK" in Settings → Accessibility → Installed Services.'}
             </Text>
           </>
         )}
@@ -312,7 +312,7 @@ const AdvancedTab: React.FC<AdvancedTabProps> = ({
           <SettingsInfoBox variant="info" title="🔒 Kiosk Mode Active">
             <Text style={styles.infoText}>
               Kiosk mode will be temporarily paused to open Android settings.{' '}
-              It will automatically re-engage when you return to FreeKiosk.
+              It will automatically re-engage when you return to TransKIOSK.
             </Text>
           </SettingsInfoBox>
         )}
@@ -392,7 +392,7 @@ const AdvancedTab: React.FC<AdvancedTabProps> = ({
       
       {/* Version footer */}
       <Text style={styles.versionFooter}>
-        FreeKiosk v{currentVersion}
+        TransKIOSK v{currentVersion}
       </Text>
     </View>
   );
