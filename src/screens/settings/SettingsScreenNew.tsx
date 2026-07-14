@@ -26,6 +26,8 @@ import AppLauncherModule, { AppInfo } from '../../utils/AppLauncherModule';
 import OverlayPermissionModule from '../../utils/OverlayPermissionModule';
 import LauncherModule from '../../utils/LauncherModule';
 import UpdateModule, { ENABLE_SELF_UPDATE } from '../../utils/UpdateModule';
+import { mdmAgent, type MdmKioskUpdateLatest } from '../../utils/MdmAgentModule';
+import { apkInstall } from '../../utils/ApkInstallModule';
 import AutoBrightnessModule from '../../utils/AutoBrightnessModule';
 import { httpServer } from '../../utils/HttpServerModule';
 import { hasSettingsAccess, revokeSettingsAccess } from '../../utils/authState';
@@ -237,10 +239,11 @@ const SettingsScreenNew: React.FC<SettingsScreenProps> = ({ navigation }) => {
   // Update states
   const [checkingUpdate, setCheckingUpdate] = useState<boolean>(false);
   const [updateAvailable, setUpdateAvailable] = useState<boolean>(false);
-  const [updateInfo, setUpdateInfo] = useState<any>(null);
+  const [updateInfo, setUpdateInfo] = useState<MdmKioskUpdateLatest | null>(null);
   const [downloading, setDownloading] = useState<boolean>(false);
+  const [updateProgressLabel, setUpdateProgressLabel] = useState<string>('');
   const [currentVersion, setCurrentVersion] = useState<string>('');
-  const [betaUpdatesEnabled, setBetaUpdatesEnabled] = useState<boolean>(false);
+  const [mdmEnrolled, setMdmEnrolled] = useState<boolean>(false);
 
   // Camera2 fallback — uses Camera2 API directly via HttpServerModule to enumerate cameras.
   // This is needed for devices where CameraX/ProcessCameraProvider fails entirely
@@ -365,8 +368,8 @@ const SettingsScreenNew: React.FC<SettingsScreenProps> = ({ navigation }) => {
       const versionInfo = await UpdateModule.getCurrentVersion();
       setCurrentVersion(versionInfo.versionName);
       if (ENABLE_SELF_UPDATE) {
-        const savedBetaUpdates = await StorageService.getBetaUpdatesEnabled();
-        setBetaUpdatesEnabled(savedBetaUpdates);
+        const info = await mdmAgent.getAgentInfo();
+        setMdmEnrolled(info.enrolled);
       }
     } catch (error) {
       console.error('Failed to load current version:', error);
@@ -1076,80 +1079,38 @@ const SettingsScreenNew: React.FC<SettingsScreenProps> = ({ navigation }) => {
 
   // ============ UPDATE FUNCTIONS ============
 
-  /**
-   * Compare semantic versions (e.g., "1.1.4" vs "1.2.2")
-   * Returns: 1 if v1 > v2, -1 if v1 < v2, 0 if equal
-   */
-  /**
-   * Semver-aware version comparison supporting pre-release suffixes.
-   * Examples: 1.2.15-beta.1 < 1.2.15-beta.2 < 1.2.15 (stable)
-   * Returns: 1 if v1 > v2, -1 if v1 < v2, 0 if equal
-   */
-  const compareVersions = (v1: string, v2: string): number => {
-    // Split version and pre-release: "1.2.15-beta.1" → ["1.2.15", "beta.1"]
-    const [core1, pre1] = v1.split('-', 2);
-    const [core2, pre2] = v2.split('-', 2);
-    
-    const parts1 = core1.split('.').map(Number);
-    const parts2 = core2.split('.').map(Number);
-    
-    // Compare numeric core first
-    for (let i = 0; i < Math.max(parts1.length, parts2.length); i++) {
-      const num1 = parts1[i] || 0;
-      const num2 = parts2[i] || 0;
-      
-      if (num1 > num2) return 1;
-      if (num1 < num2) return -1;
-    }
-    
-    // Same core version — compare pre-release
-    // No pre-release (stable) > any pre-release (beta)
-    if (!pre1 && pre2) return 1;   // v1 is stable, v2 is beta → v1 wins
-    if (pre1 && !pre2) return -1;  // v1 is beta, v2 is stable → v2 wins
-    if (!pre1 && !pre2) return 0;  // both stable, same version
-    
-    // Both have pre-release: compare beta numbers ("beta.1" vs "beta.2")
-    const betaNum1 = parseInt(pre1!.replace(/[^0-9]/g, '') || '0', 10);
-    const betaNum2 = parseInt(pre2!.replace(/[^0-9]/g, '') || '0', 10);
-    
-    if (betaNum1 > betaNum2) return 1;
-    if (betaNum1 < betaNum2) return -1;
-    
-    return 0;
-  };
-
   const handleCheckForUpdates = async () => {
     if (!ENABLE_SELF_UPDATE) return;
     setCheckingUpdate(true);
     setUpdateAvailable(false);
     setUpdateInfo(null);
-    
+
     try {
-      const currentVersionInfo = await UpdateModule.getCurrentVersion();
-      const latestUpdate = await UpdateModule.checkForUpdatesWithChannel(betaUpdatesEnabled);
-      const currentVer = currentVersionInfo.versionName;
-      const latestVer = latestUpdate.version;
-      
-      console.log(`Version comparison: current=${currentVer}, latest=${latestVer}, beta=${betaUpdatesEnabled}`);
-      
-      // Use semantic version comparison instead of simple string equality
-      const versionComparison = compareVersions(latestVer, currentVer);
-      
-      if (versionComparison > 0) {
-        // Latest version is newer than current
-        setUpdateAvailable(true);
-        setUpdateInfo(latestUpdate);
-        const betaTag = latestUpdate.isPrerelease ? ' 🧪 Beta' : '';
+      const agentInfo = await mdmAgent.getAgentInfo();
+      setMdmEnrolled(agentInfo.enrolled);
+      if (!agentInfo.enrolled) {
         Alert.alert(
-          `🎉 Update Available${betaTag}`,
-          `New version ${latestVer} available!${latestUpdate.isPrerelease ? ' (pre-release)' : ''}\n\nCurrent: ${currentVer}\n\nDo you want to download and install it?`,
+          'MDM enrollment required',
+          'Connect to TransKIOSK MDM in Advanced → REST API, then turn on Connect to MDM before checking for updates.',
+        );
+        return;
+      }
+
+      const update = await mdmAgent.fetchKioskUpdate();
+      if (update.updateAvailable && update.latest) {
+        setUpdateAvailable(true);
+        setUpdateInfo(update.latest);
+        const latestLabel = update.latest.versionName || String(update.latest.versionCode);
+        Alert.alert(
+          'Update available',
+          `TransKIOSK ${latestLabel} is available from MDM.\n\nCurrent: ${currentVersion}`,
           [
             { text: 'Later', style: 'cancel' },
-            { text: 'Update', onPress: () => handleDownloadUpdate(latestUpdate) }
-          ]
+            { text: 'Update', onPress: () => handleDownloadUpdate(update.latest!) },
+          ],
         );
       } else {
-        Alert.alert('✓ Up to Date', `You are using the latest version (${currentVer})`);
+        Alert.alert('Up to date', `You are on the latest TransKIOSK release (${currentVersion}).`);
       }
     } catch (error: any) {
       Alert.alert('Error', `Unable to check for updates: ${error.message || error.toString()}`);
@@ -1158,22 +1119,21 @@ const SettingsScreenNew: React.FC<SettingsScreenProps> = ({ navigation }) => {
     }
   };
 
-  const handleDownloadUpdate = async (update?: any) => {
+  const handleDownloadUpdate = async (update?: MdmKioskUpdateLatest) => {
     if (!ENABLE_SELF_UPDATE) return;
     const updateData = update || updateInfo;
-    
-    if (!updateData || !updateData.downloadUrl) {
-      Alert.alert('Error', 'Download URL not available.');
+
+    if (!updateData?.downloadUrl) {
+      Alert.alert('Error', 'Download URL not available from MDM.');
       return;
     }
-    
-    // Check install permission before downloading
+
     try {
       const canInstall = await UpdateModule.checkInstallPermission();
       if (!canInstall) {
         Alert.alert(
-          '⚠️ Permission Required',
-          'TransKIOSK needs permission to install updates.\n\nPlease enable "Allow from this source" on the next screen, then come back and try the update again.',
+          'Permission required',
+          'TransKIOSK needs permission to install updates. Enable "Allow from this source", then try again.',
           [
             { text: 'Cancel', style: 'cancel' },
             {
@@ -1181,11 +1141,8 @@ const SettingsScreenNew: React.FC<SettingsScreenProps> = ({ navigation }) => {
               onPress: async () => {
                 try {
                   await UpdateModule.openInstallPermissionSettings();
-                } catch (error: any) {
-                  Alert.alert(
-                    'Settings Unavailable',
-                    'This device does not support enabling app installs from settings.\n\nAlternative: connect via ADB and run:\nadb install -r TransKIOSK-<version>.apk',
-                  );
+                } catch {
+                  Alert.alert('Settings unavailable', 'Use adb install -r <apk> on restricted devices.');
                 }
               },
             },
@@ -1194,35 +1151,66 @@ const SettingsScreenNew: React.FC<SettingsScreenProps> = ({ navigation }) => {
         return;
       }
     } catch (error) {
-      // If check fails, continue with download anyway
       console.warn('Install permission check failed:', error);
     }
-    
+
     setDownloading(true);
-    
+    setUpdateProgressLabel('Queued…');
+
     try {
-      await UpdateModule.downloadAndInstall(updateData.downloadUrl, updateData.version);
-      setDownloading(false);
-      Alert.alert(
-        '✅ Update Ready',
-        'The update has been downloaded successfully. The installation screen should appear shortly.\n\nIf nothing happens:\n• Check notification panel\n• Look for "Package installer"\n• Grant installation permission if prompted',
-        [{ text: 'OK' }]
-      );
+      await apkInstall.downloadAndInstall({
+        downloadUrl: updateData.downloadUrl,
+        fileName: updateData.fileName,
+        sha256: updateData.sha256,
+        appId: updateData.appId,
+        packageName: 'com.freekiosk',
+        displayName: updateData.name,
+      });
     } catch (error: any) {
       setDownloading(false);
-      const errorMsg = error?.message || error?.toString() || 'Unknown error';
-      
-      // Provide helpful message for install permission errors
-      if (error?.code === 'INSTALL_PERMISSION' || errorMsg.includes('unknown sources')) {
-        Alert.alert(
-          '⚠️ Install Permission Needed',
-          'The update was downloaded but cannot be installed.\n\nPlease enable "Install from unknown sources" for TransKIOSK in your device settings, then try again.\n\nOn restricted devices (e.g. Echo Show), use:\nadb install -r <apk>',
-        );
-      } else {
-        Alert.alert('Error', `Download failed:\n\n${errorMsg}`);
-      }
+      setUpdateProgressLabel('');
+      Alert.alert('Update failed', error?.message || 'Could not start the update.');
     }
   };
+
+  useEffect(() => {
+    if (!ENABLE_SELF_UPDATE) return undefined;
+
+    const progressSub = apkInstall.addProgressListener((event) => {
+      if (event.appId <= 0) return;
+      const label = event.stage === 'downloading'
+        ? 'Downloading…'
+        : event.stage === 'installing'
+          ? 'Installing…'
+          : event.stage === 'queued'
+            ? 'Queued…'
+            : event.message || 'Working…';
+      setUpdateProgressLabel(label);
+      if (event.stage === 'downloading' || event.stage === 'installing' || event.stage === 'queued') {
+        setDownloading(true);
+      }
+    });
+    const completeSub = apkInstall.addCompleteListener((event) => {
+      if (event.appId <= 0) return;
+      setDownloading(false);
+      setUpdateProgressLabel('');
+      setUpdateAvailable(false);
+      setUpdateInfo(null);
+      Alert.alert('Update installed', 'TransKIOSK will restart to finish applying the update.');
+    });
+    const errorSub = apkInstall.addErrorListener((event) => {
+      if (event.appId <= 0) return;
+      setDownloading(false);
+      setUpdateProgressLabel('');
+      Alert.alert('Update failed', event.error || 'Installation failed.');
+    });
+
+    return () => {
+      progressSub?.remove();
+      completeSub?.remove();
+      errorSub?.remove();
+    };
+  }, []);
 
   // ============ SAVE FUNCTION ============
 
@@ -2120,11 +2108,8 @@ const SettingsScreenNew: React.FC<SettingsScreenProps> = ({ navigation }) => {
             downloading={downloading}
             updateAvailable={updateAvailable}
             updateInfo={updateInfo}
-            betaUpdatesEnabled={betaUpdatesEnabled}
-            onBetaUpdatesChange={async (value: boolean) => {
-              setBetaUpdatesEnabled(value);
-              await StorageService.saveBetaUpdatesEnabled(value);
-            }}
+            mdmEnrolled={mdmEnrolled}
+            updateProgressLabel={updateProgressLabel}
             onCheckForUpdates={handleCheckForUpdates}
             onDownloadUpdate={() => handleDownloadUpdate()}
             certificates={certificates}

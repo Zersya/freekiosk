@@ -31,9 +31,9 @@ interface AdvancedTabProps {
   checkingUpdate: boolean;
   downloading: boolean;
   updateAvailable: boolean;
-  updateInfo: any;
-  betaUpdatesEnabled: boolean;
-  onBetaUpdatesChange: (value: boolean) => void;
+  updateInfo: { versionName?: string; versionCode?: number; name?: string } | null;
+  mdmEnrolled: boolean;
+  updateProgressLabel?: string;
   onCheckForUpdates: () => void;
   onDownloadUpdate: () => void;
   
@@ -60,8 +60,8 @@ const AdvancedTab: React.FC<AdvancedTabProps> = ({
   downloading,
   updateAvailable,
   updateInfo,
-  betaUpdatesEnabled,
-  onBetaUpdatesChange,
+  mdmEnrolled,
+  updateProgressLabel,
   onCheckForUpdates,
   onDownloadUpdate,
   certificates,
@@ -138,51 +138,45 @@ const AdvancedTab: React.FC<AdvancedTabProps> = ({
         </View>
         
         {updateAvailable && updateInfo && (
-          <SettingsInfoBox variant="success" title={`🎉 ${updateInfo.isPrerelease ? '🧪 Beta ' : ''}Update Available`}>
+          <SettingsInfoBox variant="success" title="Update available">
             <Text style={styles.infoText}>
-              Version {updateInfo.version} is available!{updateInfo.isPrerelease ? ' (pre-release)' : ''}
-              {updateInfo.notes && `\n\n${updateInfo.notes.substring(0, 150)}...`}
+              {updateInfo.name || 'TransKIOSK'} · v{updateInfo.versionName || updateInfo.versionCode}
             </Text>
           </SettingsInfoBox>
         )}
-        
-        <View style={styles.betaRow}>
-          <View style={{ flex: 1 }}>
-            <Text style={styles.betaLabel}>🧪 Beta Updates</Text>
-            <Text style={styles.betaHint}>Receive pre-release versions before stable</Text>
-          </View>
-          <TouchableOpacity
-            style={[styles.betaToggle, betaUpdatesEnabled && styles.betaToggleActive]}
-            onPress={() => onBetaUpdatesChange(!betaUpdatesEnabled)}
-          >
-            <Text style={[styles.betaToggleText, betaUpdatesEnabled && styles.betaToggleTextActive]}>
-              {betaUpdatesEnabled ? 'ON' : 'OFF'}
+
+        {!mdmEnrolled && (
+          <SettingsInfoBox variant="warning" title="MDM not connected">
+            <Text style={styles.infoText}>
+              Enroll this tablet in TransKIOSK MDM (Advanced → REST API) to receive fleet updates.
             </Text>
-          </TouchableOpacity>
-        </View>
-        
+          </SettingsInfoBox>
+        )}
+
         <SettingsButton
-          title={checkingUpdate ? 'Checking...' : downloading ? 'Downloading...' : 'Check for Updates'}
+          title={checkingUpdate ? 'Checking…' : downloading ? (updateProgressLabel || 'Updating…') : 'Check for Updates'}
           icon={checkingUpdate ? 'timer-sand' : downloading ? 'download' : 'magnify'}
           variant="primary"
           onPress={onCheckForUpdates}
-          disabled={checkingUpdate || downloading}
+          disabled={checkingUpdate || downloading || !mdmEnrolled}
           loading={checkingUpdate}
         />
-        
+
         {updateAvailable && updateInfo && (
           <SettingsButton
-            title={downloading ? 'Downloading...' : 'Download & Install'}
+            title={downloading ? (updateProgressLabel || 'Updating…') : 'Download & Install'}
             icon="download"
             variant="success"
             onPress={onDownloadUpdate}
-            disabled={downloading}
+            disabled={downloading || !mdmEnrolled}
             loading={downloading}
           />
         )}
-        
+
         <Text style={styles.hint}>
-          {isDeviceOwner ? 'Device Owner mode: Manual updates via GitHub.' : 'Download and install updates from GitHub.'}
+          {mdmEnrolled
+            ? 'Updates are delivered from TransKIOSK MDM. Device Owner tablets install silently and restart automatically.'
+            : 'Connect to MDM to check for and install fleet releases.'}
         </Text>
       </SettingsSection>
       )}

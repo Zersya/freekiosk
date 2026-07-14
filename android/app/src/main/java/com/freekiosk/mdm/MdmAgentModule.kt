@@ -125,6 +125,46 @@ class MdmAgentModule(private val reactContext: ReactApplicationContext) :
         }.start()
     }
 
+    @ReactMethod
+    fun fetchKioskUpdate(promise: Promise) {
+        Thread {
+            try {
+                val result = MdmKioskUpdateClient.fetchKioskUpdate(reactContext)
+                promise.resolve(kioskUpdateToMap(result))
+            } catch (e: Exception) {
+                promise.reject("FETCH_KIOSK_UPDATE_ERROR", e.message, e)
+            }
+        }.start()
+    }
+
+    private fun kioskUpdateToMap(json: org.json.JSONObject): WritableMap {
+        return Arguments.createMap().apply {
+            putString("packageName", json.optString("packageName"))
+            if (!json.isNull("currentVersionCode")) {
+                putInt("currentVersionCode", json.optInt("currentVersionCode"))
+            }
+            if (!json.isNull("currentVersionName")) {
+                putString("currentVersionName", json.optString("currentVersionName"))
+            }
+            putBoolean("updateAvailable", json.optBoolean("updateAvailable", false))
+            val latest = json.optJSONObject("latest")
+            if (latest != null) {
+                putMap("latest", Arguments.createMap().apply {
+                    putInt("appId", latest.optInt("appId"))
+                    putString("name", latest.optString("name"))
+                    if (!latest.isNull("versionName")) {
+                        putString("versionName", latest.optString("versionName"))
+                    }
+                    putInt("versionCode", latest.optInt("versionCode"))
+                    putString("fileName", latest.optString("fileName"))
+                    putDouble("fileSizeBytes", latest.optLong("fileSizeBytes").toDouble())
+                    putString("sha256", latest.optString("sha256"))
+                    putString("downloadUrl", latest.optString("downloadUrl"))
+                })
+            }
+        }
+    }
+
     private fun sendEvent(event: String, params: WritableMap?) {
         reactContext
             .getJSModule(DeviceEventManagerModule.RCTDeviceEventEmitter::class.java)

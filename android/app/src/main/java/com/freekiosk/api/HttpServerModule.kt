@@ -962,15 +962,18 @@ class HttpServerModule(private val reactContext: ReactApplicationContext) :
                     }
                 }
 
+                val packageName = params?.optString("packageName", "")?.takeIf { it.isNotBlank() }
                 val job = com.freekiosk.ApkInstallJob(
                     downloadUrl = downloadUrl,
                     fileName = params?.optString("fileName", "app.apk") ?: "app.apk",
                     expectedSha256 = params?.optString("sha256", "")?.takeIf { it.isNotBlank() },
                     appId = params?.optInt("appId")?.takeIf { it > 0 },
-                    packageName = params?.optString("packageName", "")?.takeIf { it.isNotBlank() },
+                    packageName = packageName,
                 )
 
-                val result = com.freekiosk.ApkInstallHelper.getInstance(reactContext).enqueue(job, waitForCompletion = true)
+                val installTimeoutMs = if (packageName == reactContext.packageName) 180_000L else 120_000L
+                val result = com.freekiosk.ApkInstallHelper.getInstance(reactContext)
+                    .enqueue(job, waitForCompletion = true, timeoutMs = installTimeoutMs)
                 return JSONObject().apply {
                     put("executed", result.optBoolean("success", false))
                     put("success", result.optBoolean("success", false))

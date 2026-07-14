@@ -89,7 +89,9 @@ class ApkInstallHelper private constructor(private val appContext: Context) {
             }
 
             override fun onComplete(job: ApkInstallJob) {
-                ManagedAppsStorage.registerInstalledApp(appContext, job.packageName, job.displayName)
+                if (job.packageName != appContext.packageName) {
+                    ManagedAppsStorage.registerInstalledApp(appContext, job.packageName, job.displayName)
+                }
                 notifyComplete(job)
                 reportInstallStatus(job, "installed", null)
                 if (waitForCompletion) {
@@ -369,7 +371,13 @@ class ApkInstallReceiver : BroadcastReceiver() {
                     context?.startActivity(confirmIntent)
                 }
             }
-            PackageInstaller.STATUS_SUCCESS -> callback?.onSuccess()
+            PackageInstaller.STATUS_SUCCESS -> {
+                val packageName = intent.getStringExtra(EXTRA_PACKAGE_NAME)
+                if (packageName != null && context != null && packageName == context.packageName) {
+                    KioskSelfUpdate.restartApp(context)
+                }
+                callback?.onSuccess()
+            }
             else -> {
                 val message = intent.getStringExtra(PackageInstaller.EXTRA_STATUS_MESSAGE)
                 callback?.onFailure(message)

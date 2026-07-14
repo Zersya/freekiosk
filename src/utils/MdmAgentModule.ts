@@ -8,6 +8,41 @@ export interface MdmAgentInfo {
   enrolled: boolean;
 }
 
+export interface MdmKioskUpdateLatest {
+  appId: number;
+  name: string;
+  versionName?: string;
+  versionCode: number;
+  fileName: string;
+  fileSizeBytes: number;
+  sha256: string;
+  downloadUrl: string;
+}
+
+export interface MdmKioskUpdateInfo {
+  packageName: string;
+  currentVersionCode?: number;
+  currentVersionName?: string;
+  updateAvailable: boolean;
+  latest?: MdmKioskUpdateLatest | null;
+}
+
+export interface MdmCatalogApp {
+  id: number;
+  name: string;
+  packageName: string;
+  versionName?: string;
+  versionCode?: number;
+  fileName: string;
+  fileSizeBytes: number;
+  sha256: string;
+  downloadUrl: string;
+  installStatus?: string;
+  installedOnDevice?: boolean;
+  deviceVersionName?: string;
+  updateAvailable?: boolean;
+}
+
 const { MdmAgentModule } = NativeModules;
 
 class MdmAgentService {
@@ -59,22 +94,13 @@ class MdmAgentService {
     }
     return MdmAgentModule.fetchAvailableApps();
   }
-}
 
-export interface MdmCatalogApp {
-  id: number;
-  name: string;
-  packageName: string;
-  versionName?: string;
-  versionCode?: number;
-  fileName: string;
-  fileSizeBytes: number;
-  sha256: string;
-  downloadUrl: string;
-  installStatus?: string;
-  installedOnDevice?: boolean;
-  deviceVersionName?: string;
-  updateAvailable?: boolean;
+  async fetchKioskUpdate(): Promise<MdmKioskUpdateInfo> {
+    if (Platform.OS !== 'android' || !MdmAgentModule) {
+      throw new Error('MdmAgentModule is only available on Android');
+    }
+    return MdmAgentModule.fetchKioskUpdate();
+  }
 }
 
 export const mdmAgent = new MdmAgentService();
