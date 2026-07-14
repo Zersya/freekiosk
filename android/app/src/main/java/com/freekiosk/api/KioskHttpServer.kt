@@ -119,6 +119,7 @@ class KioskHttpServer(
                 method == Method.POST && uri == "/api/toast" -> handleToast(session)
                 method == Method.POST && uri == "/api/app/launch" -> handleLaunchApp(session)
                 method == Method.POST && uri == "/api/app/install" -> handleInstallApp(session)
+                method == Method.POST && uri == "/api/app/uninstall" -> handleUninstallApp(session)
                 method == Method.POST && uri == "/api/js" -> handleExecuteJs(session)
                 method == Method.POST && uri == "/api/audio/play" -> handleAudioPlay(session)
                 method == Method.POST && uri == "/api/remote/text" -> handleKeyboardText(session)
@@ -498,6 +499,26 @@ class KioskHttpServer(
         }
 
         val result = commandHandler("installApk", params)
+        return jsonSuccess(result)
+    }
+
+    private fun handleUninstallApp(session: IHTTPSession): Response {
+        checkControlAllowed()?.let { return it }
+
+        val body = parseBody(session)
+        val packageName = body?.optString("packageName", "") ?: ""
+        if (packageName.isEmpty()) {
+            return jsonError(Response.Status.BAD_REQUEST, "packageName is required")
+        }
+
+        val params = JSONObject().apply {
+            put("packageName", packageName)
+            if (body?.has("appId") == true) {
+                put("appId", body.optInt("appId"))
+            }
+        }
+
+        val result = commandHandler("uninstallApk", params)
         return jsonSuccess(result)
     }
 

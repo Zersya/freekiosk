@@ -82,6 +82,17 @@ class HttpServerModule(private val reactContext: ReactApplicationContext) :
             return module.handleCommand(command, params)
         }
 
+        fun notifyManagedAppsChanged(context: Context) {
+            instance?.emitManagedAppsChanged()
+                ?: run {
+                    val app = context.applicationContext as? com.facebook.react.ReactApplication
+                    val reactContext = app?.reactNativeHost?.reactInstanceManager?.currentReactContext
+                    reactContext
+                        ?.getJSModule(com.facebook.react.modules.core.DeviceEventManagerModule.RCTDeviceEventEmitter::class.java)
+                        ?.emit(com.freekiosk.ApkInstallModule.EVENT_COMPLETE, null)
+                }
+        }
+
         fun buildDeviceStatus(): JSONObject? = instance?.getDeviceStatus()
     }
 
@@ -247,6 +258,12 @@ class HttpServerModule(private val reactContext: ReactApplicationContext) :
     }
 
     override fun getName(): String = NAME
+
+    fun emitManagedAppsChanged() {
+        reactContext
+            .getJSModule(com.facebook.react.modules.core.DeviceEventManagerModule.RCTDeviceEventEmitter::class.java)
+            .emit(com.freekiosk.ApkInstallModule.EVENT_COMPLETE, null)
+    }
 
     @ReactMethod
     fun startServer(port: Int, apiKey: String?, allowControl: Boolean, promise: Promise) {
@@ -951,6 +968,32 @@ class HttpServerModule(private val reactContext: ReactApplicationContext) :
                 )
 
                 val result = com.freekiosk.ApkInstallHelper.getInstance(reactContext).enqueue(job, waitForCompletion = true)
+                return JSONObject().apply {
+                    put("executed", result.optBoolean("success", false))
+                    put("success", result.optBoolean("success", false))
+                    put("command", command)
+                    put("status", result.optString("status"))
+                    if (result.has("error")) put("error", result.optString("error"))
+                    if (result.has("packageName")) put("packageName", result.optString("packageName"))
+                }
+            }
+            "uninstallApk" -> {
+                val packageName = params?.optString("packageName", "") ?: ""
+                if (packageName.isBlank()) {
+                    return JSONObject().apply {
+                        put("executed", false)
+                        put("command", command)
+                        put("error", "packageName is required")
+                    }
+                }
+
+                val appId = params?.optInt("appId")?.takeIf { it > 0 }
+                val result = com.freekiosk.ApkUninstallHelper.uninstall(
+                    reactContext,
+                    packageName,
+                    appId,
+                    waitForCompletion = true,
+                )
                 return JSONObject().apply {
                     put("executed", result.optBoolean("success", false))
                     put("success", result.optBoolean("success", false))

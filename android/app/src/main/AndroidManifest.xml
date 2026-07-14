@@ -220,6 +220,12 @@
         android:enabled="true"
         android:exported="false" />
 
+      <!-- Receiver for MDM APK uninstall results -->
+      <receiver
+        android:name=".ApkUninstallReceiver"
+        android:enabled="true"
+        android:exported="false" />
+
       <!-- Receiver for silent installation results (disabled in Play Store builds) -->
       <receiver
         android:name=".UpdateInstallReceiver"

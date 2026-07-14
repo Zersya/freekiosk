@@ -19,6 +19,36 @@ object ManagedAppsStorage {
     private const val KEY_DISPLAY_MODE = "@kiosk_display_mode"
     private const val KEY_EXTERNAL_APP_MODE = "@kiosk_external_app_mode"
 
+    fun unregisterInstalledApp(context: Context, packageName: String?): Boolean {
+        if (packageName.isNullOrBlank()) return false
+
+        val db = openDb(context) ?: return false
+        return try {
+            val apps = readManagedApps(db)
+            val updated = JSONArray()
+            var removed = false
+            for (i in 0 until apps.length()) {
+                val existing = apps.getJSONObject(i)
+                if (existing.optString("packageName") == packageName) {
+                    removed = true
+                } else {
+                    updated.put(existing)
+                }
+            }
+            if (removed) {
+                writeManagedApps(db, updated)
+                refreshLockTaskWhitelist(context)
+                Log.i(TAG, "Unregistered $packageName from home screen")
+            }
+            removed
+        } catch (e: Exception) {
+            Log.e(TAG, "Failed to unregister managed app", e)
+            false
+        } finally {
+            db.close()
+        }
+    }
+
     fun registerInstalledApp(context: Context, packageName: String?, displayName: String?): Boolean {
         if (packageName.isNullOrBlank()) return false
 

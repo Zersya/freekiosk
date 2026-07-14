@@ -23,6 +23,7 @@ import okhttp3.Response
 import okhttp3.WebSocket
 import okhttp3.WebSocketListener
 import org.json.JSONObject
+import java.util.concurrent.Executors
 import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicBoolean
 
@@ -43,16 +44,31 @@ class MdmAgentClient(private val context: Context) {
     private val httpClient = OkHttpClient.Builder()
         .pingInterval(30, TimeUnit.SECONDS)
         .connectTimeout(20, TimeUnit.SECONDS)
+        // Default write timeout is 10s — streaming JPEG frames fills the socket buffer
+        // and was closing the agent connection mid-assist.
+        .writeTimeout(0, TimeUnit.MILLISECONDS)
         .readTimeout(0, TimeUnit.MILLISECONDS)
+        .callTimeout(0, TimeUnit.MILLISECONDS)
         .build()
+
+    private val screenshotExecutor = Executors.newSingleThreadExecutor()
+    private val streamSendPending = AtomicBoolean(false)
 
     private var webSocket: WebSocket? = null
     private var reconnectDelayMs = 1_000L
     private val disconnectRequested = AtomicBoolean(false)
     private val sessionReady = AtomicBoolean(false)
 
+    private enum class ConnectionPhase {
+        IDLE,
+        HANDSHAKE,
+        READY,
+    }
+
+    private val connectLock = Any()
+
     @Volatile
-    private var isConnected = false
+    private var phase = ConnectionPhase.IDLE
 
     private var wifiLock: WifiManager.WifiLock? = null
     private var cpuWakeLock: PowerManager.WakeLock? = null
@@ -79,13 +95,34 @@ class MdmAgentClient(private val context: Context) {
         }
     }
 
-    fun isConnected(): Boolean = isConnected && sessionReady.get()
+    @Volatile
+    private var isConnected = false
+
+    fun isConnected(): Boolean = phase == ConnectionPhase.READY && sessionReady.get()
 
     fun connect() {
         if (disconnectRequested.get()) return
 
+        synchronized(connectLock) {
+            when (phase) {
+                ConnectionPhase.READY -> {
+                    if (webSocket != null && isConnected) {
+                        Log.d(TAG, "Already connected, skipping connect()")
+                        return
+                    }
+                }
+                ConnectionPhase.HANDSHAKE -> {
+                    Log.d(TAG, "Handshake in progress, skipping connect()")
+                    return
+                }
+                ConnectionPhase.IDLE -> Unit
+            }
+            phase = ConnectionPhase.HANDSHAKE
+        }
+
         val wsUrl = MdmAgentPrefs.getWsUrl(context)
         if (wsUrl.isNullOrBlank()) {
+            synchronized(connectLock) { phase = ConnectionPhase.IDLE }
             onError?.invoke("MDM WebSocket URL is not configured")
             return
         }
@@ -103,6 +140,7 @@ class MdmAgentClient(private val context: Context) {
         disconnectRequested.set(true)
         sessionReady.set(false)
         isConnected = false
+        synchronized(connectLock) { phase = ConnectionPhase.IDLE }
         mainHandler.removeCallbacks(statusRunnable)
         mainHandler.removeCallbacks(reconnectRunnable)
         stopStreaming()
@@ -118,6 +156,13 @@ class MdmAgentClient(private val context: Context) {
 
     fun reconnect() {
         disconnectRequested.set(false)
+        mainHandler.removeCallbacks(reconnectRunnable)
+        webSocket?.cancel()
+        webSocket = null
+        isConnected = false
+        sessionReady.set(false)
+        synchronized(connectLock) { phase = ConnectionPhase.IDLE }
+        reconnectDelayMs = 1_000L
         connect()
     }
 
@@ -153,6 +198,7 @@ class MdmAgentClient(private val context: Context) {
     private fun handleDisconnect() {
         isConnected = false
         sessionReady.set(false)
+        synchronized(connectLock) { phase = ConnectionPhase.IDLE }
         mainHandler.removeCallbacks(statusRunnable)
         stopStreaming()
         onConnectionChanged?.invoke(false)
@@ -200,6 +246,7 @@ class MdmAgentClient(private val context: Context) {
         } else {
             onError?.invoke("MDM agent is not enrolled")
             disconnectRequested.set(true)
+            synchronized(connectLock) { phase = ConnectionPhase.IDLE }
             mainHandler.removeCallbacks(reconnectRunnable)
             socket.close(1008, "Not enrolled")
             return
@@ -221,6 +268,7 @@ class MdmAgentClient(private val context: Context) {
                     }
                     MdmAgentPrefs.saveEnrollmentResult(context, deviceId, agentToken)
                     sessionReady.set(true)
+                    synchronized(connectLock) { phase = ConnectionPhase.READY }
                     onConnectionChanged?.invoke(true)
                     publishStatus()
                     mainHandler.removeCallbacks(statusRunnable)
@@ -228,6 +276,7 @@ class MdmAgentClient(private val context: Context) {
                 }
                 "welcome" -> {
                     sessionReady.set(true)
+                    synchronized(connectLock) { phase = ConnectionPhase.READY }
                     onConnectionChanged?.invoke(true)
                     publishStatus()
                     mainHandler.removeCallbacks(statusRunnable)
@@ -278,57 +327,58 @@ class MdmAgentClient(private val context: Context) {
 
     private fun handleScreenshotCommand(requestId: String, params: JSONObject?) {
         val quality = params?.optInt("quality", 80)?.coerceIn(1, 100) ?: 80
-        ensureStreamHandler().post {
+        screenshotExecutor.execute {
             try {
+                if (DeviceOwnerScreenCapture.isAvailable(context) && !ScreenCaptureManager.isActive()) {
+                    DeviceOwnerScreenCapture.startRefresh(context, 750L)
+                }
+
+                // Prefer JPEG over the agent socket — full-screen PNG payloads can exceed
+                // WebSocket frame limits and drop the connection.
+                val jpegBytes = ScreenCaptureManager.getLatestJpegBytes(context, quality, STREAM_MAX_DIMENSION)
+                if (jpegBytes != null && jpegBytes.isNotEmpty()) {
+                    sendScreenshotResult(requestId, jpegBytes, "image/jpeg")
+                    return@execute
+                }
+
                 val png = ScreenCaptureManager.captureFrame(context)
                 if (png != null) {
-                    val bytes = png.readBytes()
-                    val base64 = Base64.encodeToString(bytes, Base64.NO_WRAP)
-                    val response = JSONObject().apply {
-                        put("type", "command_result")
-                        put("requestId", requestId)
-                        put("success", true)
-                        put("data", JSONObject().apply {
-                            put("imageBase64", base64)
-                            put("mimeType", "image/png")
-                        })
-                    }
-                    webSocket?.send(response.toString())
+                    sendScreenshotResult(requestId, png.readBytes(), "image/png")
                 } else {
-                    val jpegBytes = ScreenCaptureManager.getLatestJpegBytes(context, quality, STREAM_MAX_DIMENSION)
-                    if (jpegBytes != null && jpegBytes.isNotEmpty()) {
-                        val base64 = Base64.encodeToString(jpegBytes, Base64.NO_WRAP)
-                        val response = JSONObject().apply {
-                            put("type", "command_result")
-                            put("requestId", requestId)
-                            put("success", true)
-                            put("data", JSONObject().apply {
-                                put("imageBase64", base64)
-                                put("mimeType", "image/jpeg")
-                            })
-                        }
-                        webSocket?.send(response.toString())
-                    } else {
-                        val response = JSONObject().apply {
-                            put("type", "command_result")
-                            put("requestId", requestId)
-                            put("success", false)
-                            put("error", "Screen capture not available — enable Remote Screenshot in settings")
-                        }
-                        webSocket?.send(response.toString())
-                    }
+                    sendScreenshotError(
+                        requestId,
+                        "Screen capture not available — enable Remote Screenshot in settings",
+                    )
                 }
             } catch (e: Exception) {
                 Log.e(TAG, "Screenshot command failed: ${e.message}", e)
-                val response = JSONObject().apply {
-                    put("type", "command_result")
-                    put("requestId", requestId)
-                    put("success", false)
-                    put("error", e.message ?: "Screenshot failed")
-                }
-                webSocket?.send(response.toString())
+                sendScreenshotError(requestId, e.message ?: "Screenshot failed")
             }
         }
+    }
+
+    private fun sendScreenshotResult(requestId: String, bytes: ByteArray, mimeType: String) {
+        val base64 = Base64.encodeToString(bytes, Base64.NO_WRAP)
+        val response = JSONObject().apply {
+            put("type", "command_result")
+            put("requestId", requestId)
+            put("success", true)
+            put("data", JSONObject().apply {
+                put("imageBase64", base64)
+                put("mimeType", mimeType)
+            })
+        }
+        webSocket?.send(response.toString())
+    }
+
+    private fun sendScreenshotError(requestId: String, error: String) {
+        val response = JSONObject().apply {
+            put("type", "command_result")
+            put("requestId", requestId)
+            put("success", false)
+            put("error", error)
+        }
+        webSocket?.send(response.toString())
     }
 
     private fun handleStreamStart(message: JSONObject) {
@@ -361,14 +411,24 @@ class MdmAgentClient(private val context: Context) {
 
                 val jpeg = ScreenCaptureManager.getLatestJpegBytes(context, quality, STREAM_MAX_DIMENSION)
                 if (jpeg != null && jpeg.isNotEmpty()) {
-                    val payload = JSONObject().apply {
-                        put("type", "stream_frame")
-                        put("sessionId", sessionId)
-                        put("timestamp", System.currentTimeMillis() / 1000)
-                        put("contentType", "image/jpeg")
-                        put("data", Base64.encodeToString(jpeg, Base64.NO_WRAP))
+                    if (!streamSendPending.compareAndSet(false, true)) {
+                        handler.postDelayed(this, intervalMs)
+                        return
                     }
-                    socket.send(payload.toString())
+                    try {
+                        val payload = JSONObject().apply {
+                            put("type", "stream_frame")
+                            put("sessionId", sessionId)
+                            put("timestamp", System.currentTimeMillis() / 1000)
+                            put("contentType", "image/jpeg")
+                            put("data", Base64.encodeToString(jpeg, Base64.NO_WRAP))
+                        }
+                        if (!socket.send(payload.toString())) {
+                            Log.w(TAG, "Stream frame dropped — WebSocket send queue full")
+                        }
+                    } finally {
+                        streamSendPending.set(false)
+                    }
                 }
 
                 handler.postDelayed(this, intervalMs)
@@ -400,6 +460,7 @@ class MdmAgentClient(private val context: Context) {
         streamRunnable?.let { streamHandler?.removeCallbacks(it) }
         streamRunnable = null
         activeStreamSessionId = null
+        streamSendPending.set(false)
         DeviceOwnerScreenCapture.stopRefresh()
     }
 
@@ -452,7 +513,9 @@ class MdmAgentClient(private val context: Context) {
                 .build()
             val callback = object : ConnectivityManager.NetworkCallback() {
                 override fun onAvailable(network: Network) {
-                    if (!disconnectRequested.get() && !sessionReady.get()) {
+                    // Only reconnect from a cold idle state. During HANDSHAKE the socket is
+                    // already up but sessionReady is false — reconnecting here caused a storm.
+                    if (!disconnectRequested.get() && phase == ConnectionPhase.IDLE && webSocket == null) {
                         mainHandler.post { connect() }
                     }
                 }
