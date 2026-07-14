@@ -14,6 +14,9 @@ import {
   ActivityIndicator,
   Platform,
 } from 'react-native';
+import { useNavigation } from '@react-navigation/native';
+import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
+import type { RootStackParamList } from '../navigation/AppNavigator';
 import SettingsSection from './settings/SettingsSection';
 import SettingsSwitch from './settings/SettingsSwitch';
 import SettingsInput from './settings/SettingsInput';
@@ -31,6 +34,7 @@ interface ApiSettingsSectionProps {
 export const ApiSettingsSection: React.FC<ApiSettingsSectionProps> = ({
   onSettingsChanged,
 }) => {
+  const navigation = useNavigation<NativeStackNavigationProp<RootStackParamList>>();
   const [apiEnabled, setApiEnabled] = useState(false);
   const [apiPort, setApiPort] = useState('8080');
   const [apiKey, setApiKey] = useState('');
@@ -643,6 +647,16 @@ export const ApiSettingsSection: React.FC<ApiSettingsSectionProps> = ({
           </Text>
         </TouchableOpacity>
 
+        {mdmEnrolled && (
+          <TouchableOpacity
+            style={styles.installerButton}
+            onPress={() => navigation.navigate('Installer')}
+          >
+            <Icon name="package-variant" size={16} color="#0066cc" />
+            <Text style={styles.installerButtonText}>Open App Installer</Text>
+          </TouchableOpacity>
+        )}
+
         <SettingsInput
           label="MDM WebSocket URL"
           value={mdmWsUrl}
@@ -804,6 +818,24 @@ const styles = StyleSheet.create({
     fontSize: 13,
     fontWeight: '600',
     color: '#C62828',
+    marginLeft: 6,
+  },
+  installerButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    alignSelf: 'flex-start',
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    marginBottom: 8,
+    backgroundColor: '#E3F2FD',
+    borderRadius: 6,
+    borderWidth: 1,
+    borderColor: '#BBDEFB',
+  },
+  installerButtonText: {
+    fontSize: 13,
+    fontWeight: '600',
+    color: '#0066cc',
     marginLeft: 6,
   },
 });

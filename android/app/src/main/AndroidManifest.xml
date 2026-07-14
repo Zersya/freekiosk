@@ -204,6 +204,22 @@
         android:exported="false"
         android:foregroundServiceType="dataSync" />
 
+      <provider
+        android:name="androidx.core.content.FileProvider"
+        android:authorities="${applicationId}.fileprovider"
+        android:exported="false"
+        android:grantUriPermissions="true">
+        <meta-data
+          android:name="android.support.FILE_PROVIDER_PATHS"
+          android:resource="@xml/file_provider_paths" />
+      </provider>
+
+      <!-- Receiver for MDM APK installation results -->
+      <receiver
+        android:name=".ApkInstallReceiver"
+        android:enabled="true"
+        android:exported="false" />
+
       <!-- Receiver for silent installation results (disabled in Play Store builds) -->
       <receiver
         android:name=".UpdateInstallReceiver"

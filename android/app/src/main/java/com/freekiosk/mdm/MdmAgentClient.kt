@@ -181,7 +181,7 @@ class MdmAgentClient(private val context: Context) {
                 put("type", "enroll")
                 put("enrollmentToken", enrollmentToken)
                 put("deviceKey", deviceKey)
-                put("capabilities", org.json.JSONArray(listOf("status", "commands", "stream")))
+                put("capabilities", org.json.JSONArray(listOf("status", "commands", "stream", "install")))
                 put("info", JSONObject().apply {
                     put("name", Build.MODEL)
                     put("model", Build.MODEL)
@@ -195,7 +195,7 @@ class MdmAgentClient(private val context: Context) {
                 put("deviceId", deviceId)
                 put("agentToken", agentToken)
                 put("protocolVersion", PROTOCOL_VERSION)
-                put("capabilities", org.json.JSONArray(listOf("status", "commands", "stream")))
+                put("capabilities", org.json.JSONArray(listOf("status", "commands", "stream", "install")))
             }
         } else {
             onError?.invoke("MDM agent is not enrolled")

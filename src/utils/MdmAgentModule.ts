@@ -52,6 +52,26 @@ class MdmAgentService {
     }
     return MdmAgentModule.clearEnrollment();
   }
+
+  async fetchAvailableApps(): Promise<MdmCatalogApp[]> {
+    if (Platform.OS !== 'android' || !MdmAgentModule) {
+      return [];
+    }
+    return MdmAgentModule.fetchAvailableApps();
+  }
+}
+
+export interface MdmCatalogApp {
+  id: number;
+  name: string;
+  packageName: string;
+  versionName?: string;
+  versionCode?: number;
+  fileName: string;
+  fileSizeBytes: number;
+  sha256: string;
+  downloadUrl: string;
+  installStatus?: string;
 }
 
 export const mdmAgent = new MdmAgentService();

@@ -6,12 +6,14 @@ import PinScreen from '../screens/PinScreen';
 // v1.2: Use new settings screen with Material tabs
 import { SettingsScreen } from '../screens/settings';
 import BlockingOverlaysScreen from '../screens/settings/BlockingOverlaysScreen';
+import InstallerScreen from '../screens/InstallerScreen';
 
 export type RootStackParamList = {
   Kiosk: undefined;
   Pin: undefined;
   Settings: undefined;
   BlockingOverlays: undefined;
+  Installer: undefined;
 };
 
 const Stack = createNativeStackNavigator<RootStackParamList>();
@@ -53,6 +55,14 @@ const AppNavigator: React.FC = () => {
           component={BlockingOverlaysScreen}
           options={{
             headerShown: false,
+          }}
+        />
+        <Stack.Screen
+          name="Installer"
+          component={InstallerScreen}
+          options={{
+            headerShown: false,
+            gestureEnabled: false,
           }}
         />
       </Stack.Navigator>

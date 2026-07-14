@@ -27,6 +27,7 @@ class MainApplication : Application(), ReactApplication {
           add(OverlayServicePackage())
           add(SystemInfoPackage())
           add(UpdatePackage())
+          add(ApkInstallPackage())
           add(HttpServerPackage())
           add(MqttPackage())
           add(MdmAgentPackage())

@@ -932,6 +932,34 @@ class HttpServerModule(private val reactContext: ReactApplicationContext) :
                     })
                 }
             }
+            "installApk" -> {
+                val downloadUrl = params?.optString("downloadUrl", "") ?: ""
+                if (downloadUrl.isBlank()) {
+                    return JSONObject().apply {
+                        put("executed", false)
+                        put("command", command)
+                        put("error", "downloadUrl is required")
+                    }
+                }
+
+                val job = com.freekiosk.ApkInstallJob(
+                    downloadUrl = downloadUrl,
+                    fileName = params?.optString("fileName", "app.apk") ?: "app.apk",
+                    expectedSha256 = params?.optString("sha256", "")?.takeIf { it.isNotBlank() },
+                    appId = params?.optInt("appId")?.takeIf { it > 0 },
+                    packageName = params?.optString("packageName", "")?.takeIf { it.isNotBlank() },
+                )
+
+                val result = com.freekiosk.ApkInstallHelper.getInstance(reactContext).enqueue(job, waitForCompletion = true)
+                return JSONObject().apply {
+                    put("executed", result.optBoolean("success", false))
+                    put("success", result.optBoolean("success", false))
+                    put("command", command)
+                    put("status", result.optString("status"))
+                    if (result.has("error")) put("error", result.optString("error"))
+                    if (result.has("packageName")) put("packageName", result.optString("packageName"))
+                }
+            }
             "reboot" -> {
                 return try {
                     val dpm = reactContext.getSystemService(Context.DEVICE_POLICY_SERVICE) as android.app.admin.DevicePolicyManager

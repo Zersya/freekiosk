@@ -77,7 +77,7 @@ class KioskHttpServer(
         // POST-only endpoints that require a JSON body (GET on these → 405, not 404)
         val postOnlyUris = setOf(
             "/api/url", "/api/navigate", "/api/tts", "/api/toast",
-            "/api/app/launch", "/api/js", "/api/audio/play",             "/api/remote/text",
+            "/api/app/launch", "/api/app/install", "/api/js", "/api/audio/play",             "/api/remote/text",
             "/api/remote/tap",
             "/api/remote/swipe"
         )
@@ -118,6 +118,7 @@ class KioskHttpServer(
                 method == Method.POST && uri == "/api/tts" -> handleTts(session)
                 method == Method.POST && uri == "/api/toast" -> handleToast(session)
                 method == Method.POST && uri == "/api/app/launch" -> handleLaunchApp(session)
+                method == Method.POST && uri == "/api/app/install" -> handleInstallApp(session)
                 method == Method.POST && uri == "/api/js" -> handleExecuteJs(session)
                 method == Method.POST && uri == "/api/audio/play" -> handleAudioPlay(session)
                 method == Method.POST && uri == "/api/remote/text" -> handleKeyboardText(session)
@@ -208,6 +209,7 @@ class KioskHttpServer(
                     put("/api/toast - Show toast {text: string}")
                     put("/api/volume - Set volume {value: 0-100}")
                     put("/api/app/launch - Launch app {package: string}")
+                    put("/api/app/install - Install APK {downloadUrl, fileName?, packageName?, sha256?, appId?}")
                     put("/api/js - Execute JavaScript {code: string}")
                     put("/api/audio/play - Play audio {url: string, loop: bool, volume: 0-100}")
                     put("/api/remote/text - Type text {text: string}")
@@ -470,6 +472,32 @@ class KioskHttpServer(
         }
 
         val result = commandHandler("launchApp", JSONObject().put("package", packageName))
+        return jsonSuccess(result)
+    }
+
+    private fun handleInstallApp(session: IHTTPSession): Response {
+        checkControlAllowed()?.let { return it }
+
+        val body = parseBody(session)
+        val downloadUrl = body?.optString("downloadUrl", "") ?: ""
+        if (downloadUrl.isEmpty()) {
+            return jsonError(Response.Status.BAD_REQUEST, "downloadUrl is required")
+        }
+
+        val params = JSONObject().apply {
+            put("downloadUrl", downloadUrl)
+            put("fileName", body?.optString("fileName", "app.apk") ?: "app.apk")
+            put("packageName", body?.optString("packageName", ""))
+            put("sha256", body?.optString("sha256", ""))
+            if (body?.has("appId") == true) {
+                put("appId", body.optInt("appId"))
+            }
+            if (body?.has("versionCode") == true) {
+                put("versionCode", body.optInt("versionCode"))
+            }
+        }
+
+        val result = commandHandler("installApk", params)
         return jsonSuccess(result)
     }
 

@@ -89,6 +89,37 @@ class MdmAgentModule(private val reactContext: ReactApplicationContext) :
         }
     }
 
+    @ReactMethod
+    fun fetchAvailableApps(promise: Promise) {
+        Thread {
+            try {
+                val result = MdmAppsClient.fetchAvailableApps(reactContext)
+                val apps = result.optJSONArray("apps") ?: org.json.JSONArray()
+                val array = Arguments.createArray()
+                for (i in 0 until apps.length()) {
+                    val app = apps.getJSONObject(i)
+                    array.pushMap(Arguments.createMap().apply {
+                        putInt("id", app.optInt("id"))
+                        putString("name", app.optString("name"))
+                        putString("packageName", app.optString("packageName"))
+                        putString("versionName", app.optString("versionName", null))
+                        putInt("versionCode", app.optInt("versionCode"))
+                        putString("fileName", app.optString("fileName"))
+                        putDouble("fileSizeBytes", app.optLong("fileSizeBytes").toDouble())
+                        putString("sha256", app.optString("sha256"))
+                        putString("downloadUrl", app.optString("downloadUrl"))
+                        if (!app.isNull("installStatus")) {
+                            putString("installStatus", app.optString("installStatus"))
+                        }
+                    })
+                }
+                promise.resolve(array)
+            } catch (e: Exception) {
+                promise.reject("FETCH_APPS_ERROR", e.message, e)
+            }
+        }.start()
+    }
+
     private fun sendEvent(event: String, params: WritableMap?) {
         reactContext
             .getJSModule(DeviceEventManagerModule.RCTDeviceEventEmitter::class.java)
