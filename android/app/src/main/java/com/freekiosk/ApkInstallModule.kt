@@ -28,6 +28,7 @@ class ApkInstallModule(private val reactContext: ReactApplicationContext) :
         sha256: String?,
         appId: Int?,
         packageName: String?,
+        displayName: String?,
         promise: Promise,
     ) {
         try {
@@ -42,6 +43,7 @@ class ApkInstallModule(private val reactContext: ReactApplicationContext) :
                 expectedSha256 = sha256?.takeIf { it.isNotBlank() },
                 appId = appId?.takeIf { it > 0 },
                 packageName = packageName?.takeIf { it.isNotBlank() },
+                displayName = displayName?.takeIf { it.isNotBlank() },
             )
 
             val result = helper.enqueue(job, waitForCompletion = false)
@@ -72,6 +74,8 @@ class ApkInstallModule(private val reactContext: ReactApplicationContext) :
             putString("jobId", job.id)
             putInt("appId", job.appId ?: -1)
             putString("packageName", job.packageName)
+            putString("displayName", job.displayName)
+            putBoolean("addedToHomeScreen", !job.packageName.isNullOrBlank())
         })
     }
 

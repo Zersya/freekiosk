@@ -12,6 +12,8 @@ export interface ApkInstallResultEvent {
   jobId: string;
   appId: number;
   packageName?: string;
+  displayName?: string;
+  addedToHomeScreen?: boolean;
   error?: string;
 }
 
@@ -28,6 +30,7 @@ class ApkInstallService {
     sha256?: string;
     appId?: number;
     packageName?: string;
+    displayName?: string;
   }): Promise<string> {
     if (Platform.OS !== 'android' || !ApkInstallModule) {
       throw new Error('ApkInstallModule is only available on Android');
@@ -39,6 +42,7 @@ class ApkInstallService {
       options.sha256 ?? null,
       options.appId ?? null,
       options.packageName ?? null,
+      options.displayName ?? null,
     );
   }
 

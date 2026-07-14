@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef, useCallback } from 'react';
+import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { View, StyleSheet, TouchableOpacity, TouchableWithoutFeedback, Text, NativeEventEmitter, NativeModules, AppState, DeviceEventEmitter, Dimensions, Pressable, BackHandler, Keyboard } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import RNBrightness from '../utils/BrightnessModule';
@@ -29,6 +29,8 @@ import type { RootStackParamList } from '../navigation/AppNavigator';
 import Icon from '../components/Icon';
 import { revokeSettingsAccess } from '../utils/authState';
 import MaterialCommunityIcons from 'react-native-vector-icons/MaterialCommunityIcons';
+import MdmInstallerFab from '../components/MdmInstallerFab';
+import { mdmAgent } from '../utils/MdmAgentModule';
 
 const { HttpServerModule } = NativeModules;
 
@@ -100,6 +102,7 @@ const KioskScreen: React.FC<KioskScreenProps> = ({ navigation }) => {
   const [managedApps, setManagedApps] = useState<import('../types/managedApps').ManagedApp[]>([]);
   const [externalAppMode, setExternalAppMode] = useState<'single' | 'multi'>('single');
   const externalAppModeRef = useRef<'single' | 'multi'>('single');
+  const [mdmEnrolled, setMdmEnrolled] = useState(false);
   
   // Spatial proximity detection for N-tap (WebView mode)
   const firstTapXRef = useRef<number>(0);
@@ -989,8 +992,87 @@ const KioskScreen: React.FC<KioskScreenProps> = ({ navigation }) => {
     }, [])
   );
 
+  useFocusEffect(
+    useCallback(() => {
+      let active = true;
+      const refreshMdmEnrollment = async () => {
+        try {
+          const info = await mdmAgent.getAgentInfo();
+          if (active) setMdmEnrolled(info.enrolled);
+        } catch {
+          if (active) setMdmEnrolled(false);
+        }
+      };
+      refreshMdmEnrollment();
+      return () => {
+        active = false;
+      };
+    }, [])
+  );
+
+  const showInstallerFab = useMemo(() => {
+    if (!mdmEnrolled || isScreensaverActive || isScheduledSleep) return false;
+
+    if (displayMode === 'external_app') {
+      if (externalAppMode === 'multi') {
+        const homeScreenApps = managedApps.filter(app => app.showOnHomeScreen);
+        return homeScreenApps.length > 0 && !isAppLaunched;
+      }
+      return !isAppLaunched;
+    }
+
+    if (displayMode === 'webview' && dashboardModeEnabled && dashboardShowGrid) {
+      return true;
+    }
+
+    return false;
+  }, [
+    mdmEnrolled,
+    isScreensaverActive,
+    isScheduledSleep,
+    displayMode,
+    externalAppMode,
+    managedApps,
+    isAppLaunched,
+    dashboardModeEnabled,
+    dashboardShowGrid,
+  ]);
+
+  const installerFabStyle = useMemo(() => {
+    if (returnMode !== 'button' || returnButtonPosition !== 'bottom-right') {
+      return undefined;
+    }
+
+    const sharesBottomRight =
+      displayMode === 'webview' ||
+      displayMode === 'media_player' ||
+      (displayMode === 'external_app' && !isAppLaunched);
+
+    return sharesBottomRight ? { right: 78 } : undefined;
+  }, [returnMode, returnButtonPosition, displayMode, isAppLaunched]);
+
   useEffect(() => {
-    // Don't apply manual brightness when auto-brightness is active
+    const sub = DeviceEventEmitter.addListener('onApkInstallComplete', async () => {
+      try {
+        const savedManagedApps = await StorageService.getManagedApps();
+        setManagedApps(savedManagedApps);
+        const savedDisplayMode = await StorageService.getDisplayMode();
+        if (savedDisplayMode === 'external_app' || savedDisplayMode === 'webview' || savedDisplayMode === 'media_player') {
+          setDisplayMode(savedDisplayMode);
+        }
+        const savedExternalAppMode = await StorageService.getExternalAppMode();
+        if (savedExternalAppMode === 'single' || savedExternalAppMode === 'multi') {
+          setExternalAppMode(savedExternalAppMode);
+          externalAppModeRef.current = savedExternalAppMode;
+        }
+      } catch (error) {
+        console.warn('[KioskScreen] Failed to refresh home screen after APK install:', error);
+      }
+    });
+    return () => sub.remove();
+  }, []);
+
+  useEffect(() => {
     if (autoBrightnessEnabled) return;
     // Don't apply if brightness management is disabled
     if (!brightnessManagementEnabled) return;
@@ -2768,6 +2850,12 @@ const KioskScreen: React.FC<KioskScreenProps> = ({ navigation }) => {
           onPress={screenSchedulerWakeOnTouch ? onScreensaverTap : undefined}
         />
       )}
+
+      <MdmInstallerFab
+        visible={showInstallerFab}
+        style={installerFabStyle}
+        onPress={() => navigation.navigate('Installer')}
+      />
     </View>
   );
 };

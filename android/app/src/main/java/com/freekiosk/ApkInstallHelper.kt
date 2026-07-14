@@ -30,6 +30,7 @@ data class ApkInstallJob(
     val expectedSha256: String?,
     val appId: Int?,
     val packageName: String?,
+    val displayName: String? = null,
 )
 
 enum class ApkInstallStage {
@@ -88,7 +89,8 @@ class ApkInstallHelper private constructor(private val appContext: Context) {
             }
 
             override fun onComplete(job: ApkInstallJob) {
-                notifyProgress(job, ApkInstallStage.COMPLETED, null)
+                ManagedAppsStorage.registerInstalledApp(appContext, job.packageName, job.displayName)
+                notifyComplete(job)
                 reportInstallStatus(job, "installed", null)
                 if (waitForCompletion) {
                     resultRef.set(JSONObject().apply {
@@ -289,7 +291,7 @@ class ApkInstallHelper private constructor(private val appContext: Context) {
             flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_GRANT_READ_URI_PERMISSION
         }
         appContext.startActivity(intent)
-        listener.onComplete(job)
+        listener.onProgress(job, ApkInstallStage.INSTALLING, "Confirm installation in the system dialog")
     }
 
     private fun sha256OfFile(file: File): String {
@@ -307,13 +309,22 @@ class ApkInstallHelper private constructor(private val appContext: Context) {
 
     private fun notifyProgress(job: ApkInstallJob, stage: ApkInstallStage, message: String?) {
         mainHandler.post {
-            listeners.forEach { it.onProgress(job, stage, message) }
+            val snapshot = listeners.toList()
+            snapshot.forEach { it.onProgress(job, stage, message) }
+        }
+    }
+
+    private fun notifyComplete(job: ApkInstallJob) {
+        mainHandler.post {
+            val snapshot = listeners.toList()
+            snapshot.forEach { it.onComplete(job) }
         }
     }
 
     private fun notifyError(job: ApkInstallJob, error: String) {
         mainHandler.post {
-            listeners.forEach { it.onError(job, error) }
+            val snapshot = listeners.toList()
+            snapshot.forEach { it.onError(job, error) }
         }
     }
 
