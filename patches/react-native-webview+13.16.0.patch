@@ -597,7 +597,7 @@ index 0287e1c..88d1fa8 100644
          event.putBoolean("loading", !mLastLoadFailed && webView.getProgress() != 100);
          event.putString("title", webView.getTitle());
 diff --git a/node_modules/react-native-webview/android/src/main/java/com/reactnativecommunity/webview/RNCWebViewManagerImpl.kt b/node_modules/react-native-webview/android/src/main/java/com/reactnativecommunity/webview/RNCWebViewManagerImpl.kt
-index f83033b..98721f1 100644
+index f83033b..74f265d 100644
 --- a/node_modules/react-native-webview/android/src/main/java/com/reactnativecommunity/webview/RNCWebViewManagerImpl.kt
 +++ b/node_modules/react-native-webview/android/src/main/java/com/reactnativecommunity/webview/RNCWebViewManagerImpl.kt
 @@ -92,14 +92,42 @@ class RNCWebViewManagerImpl(private val newArch: Boolean = false) {
@@ -654,3 +654,36 @@ index f83033b..98721f1 100644
                  val baseUrl = urlObj.protocol + "://" + urlObj.host
                  val cookie = CookieManager.getInstance().getCookie(baseUrl)
                  request.addRequestHeader("Cookie", cookie)
+@@ -245,10 +273,10 @@ class RNCWebViewManagerImpl(private val newArch: Boolean = false) {
+         val view = viewWrapper.webView
+         when {
+             mUserAgent != null -> {
+-                view.settings.userAgentString = mUserAgent
++                applyUserAgentString(view, mUserAgent)
+             }
+             mUserAgentWithApplicationName != null -> {
+-                view.settings.userAgentString = mUserAgentWithApplicationName
++                applyUserAgentString(view, mUserAgentWithApplicationName)
+             }
+             else -> {
+                 view.settings.userAgentString = WebSettings.getDefaultUserAgent(view.context)
+@@ -256,6 +284,19 @@ class RNCWebViewManagerImpl(private val newArch: Boolean = false) {
+         }
+     }
+ 
++    // Chromium's AwSettings.setUserAgentString() throws IllegalArgumentException when the
++    // User-Agent contains characters that are illegal in an HTTP header value (newlines,
++    // control chars). A bad custom UA from settings would otherwise crash the app on the
++    // Fabric mount thread. Guard it and fall back to the default UA instead of crashing.
++    private fun applyUserAgentString(view: RNCWebView, userAgent: String?) {
++        try {
++            view.settings.userAgentString = userAgent
++        } catch (e: IllegalArgumentException) {
++            android.util.Log.w(TAG, "Invalid User-Agent string rejected by WebView, falling back to default: ${e.message}")
++            view.settings.userAgentString = WebSettings.getDefaultUserAgent(view.context)
++        }
++    }
++
+     fun setBasicAuthCredential(viewWrapper: RNCWebViewWrapper, credential: ReadableMap?) {
+         var basicAuthCredential: RNCBasicAuthCredential? = null
+         if (credential != null) {

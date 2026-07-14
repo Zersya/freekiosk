@@ -9,13 +9,16 @@ import {
   Image,
   ScrollView,
   Linking,
-  NativeModules
+  NativeModules,
+  findNodeHandle
 } from 'react-native';
 
 const { HttpServerModule } = NativeModules;
 
+import KioskModule from '../utils/KioskModule';
+import UpdateModule from '../utils/UpdateModule';
 import { WebView } from 'react-native-webview';
-import type { WebViewErrorEvent, ShouldStartLoadRequest } from 'react-native-webview/lib/WebViewTypes';
+import type { WebViewErrorEvent, ShouldStartLoadRequest, WebViewRenderProcessGoneEvent } from 'react-native-webview/lib/WebViewTypes';
 import { useNavigation } from '@react-navigation/native';
 import PrintModule from '../utils/PrintModule';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
@@ -44,6 +47,7 @@ interface WebViewComponentProps {
   disableUserZoom?: boolean; // Prevent pinch-to-zoom and double-tap zoom
   customUserAgent?: string; // Custom User-Agent string (empty = default modern Chrome UA)
   basicAuthCredential?: { username: string; password: string };
+  onRenderProcessGone?: (didCrash: boolean) => void; // #198 — renderer process died, ask parent to remount
 }
 
 export interface WebViewComponentRef {
@@ -52,7 +56,14 @@ export interface WebViewComponentRef {
   reload: () => void;
   scrollToTop: () => void;
   clearCache: () => void;
+  pauseMedia: () => void;
+  resumeMedia: () => void;
 }
+
+// #177 — Pause any HTML5 media playing in the page. Injected on pause as a reliable
+// complement to the native WebView.onPause() (which alone doesn't stop <audio> on every
+// OEM WebView). Ends with `true;` to silence react-native-webview's injection warning.
+const MEDIA_PAUSE_JS = `(function(){try{document.querySelectorAll('audio,video').forEach(function(m){try{m.pause();}catch(e){}});}catch(e){}})();true;`;
 
 const WebViewComponent = forwardRef<WebViewComponentRef, WebViewComponentProps>(({ 
   url, 
@@ -75,13 +86,22 @@ const WebViewComponent = forwardRef<WebViewComponentRef, WebViewComponentProps>(
   disableUserZoom = false,
   customUserAgent = '',
   basicAuthCredential,
+  onRenderProcessGone,
 }, ref) => {
   const navigation = useNavigation<NavigationProp>();
   const webViewRef = useRef<WebView>(null);
+  // #190 — Host-view ref for pauseMedia/resumeMedia. react-native-webview's ref is a
+  // methods-only imperative handle, NOT a ReactComponent: passing it to findNodeHandle
+  // throws and crashes the app (JavascriptException on screensaver activation). The
+  // native pauseWebView() walks the subtree for the WebView, so the container's tag works.
+  const containerViewRef = useRef<View>(null);
   const [loading, setLoading] = useState<boolean>(true);
   const [error, setError] = useState<boolean>(false);
   const [pageLoaded, setPageLoaded] = useState<boolean>(false);
   const [blockedUrlMessage, setBlockedUrlMessage] = useState<string | null>(null);
+  // App version for the error-overlay footer — read from the installed APK (build.gradle)
+  // via UpdateModule rather than hardcoded, so it never drifts on release bumps.
+  const [appVersion, setAppVersion] = useState<string>('');
   const blockedUrlTimerRef = useRef<any>(null);
   const isGoingBackRef = useRef<boolean>(false); // Prevent goBack loop for URL filter
   const fadeAnim = useRef(new Animated.Value(0)).current;
@@ -195,6 +215,33 @@ const WebViewComponent = forwardRef<WebViewComponentRef, WebViewComponentProps>(
         webViewRef.current.clearCache(true);
         console.log('[WebView] Cache cleared via ref');
       }
+    },
+    // #177 — Stop background audio/video when the page is hidden (screensaver / screen off
+    // / app backgrounded). JS-level pause of <audio>/<video> + native renderer suspend.
+    pauseMedia: () => {
+      const wv = webViewRef.current;
+      if (!wv) return;
+      wv.injectJavaScript(MEDIA_PAUSE_JS);
+      // #190 — resolve the tag from the container host view, never from the WebView ref
+      // (a methods-only imperative handle that makes findNodeHandle throw → app crash)
+      try {
+        const node = findNodeHandle(containerViewRef.current);
+        if (node != null) {
+          KioskModule.pauseWebView?.(node).catch(() => {});
+        }
+      } catch {}
+    },
+    // Resume only re-enables the WebView renderer; media is intentionally left paused so
+    // audio doesn't auto-restart on its own (the page/user decides).
+    resumeMedia: () => {
+      const wv = webViewRef.current;
+      if (!wv) return;
+      try {
+        const node = findNodeHandle(containerViewRef.current);
+        if (node != null) {
+          KioskModule.resumeWebView?.(node).catch(() => {});
+        }
+      } catch {}
     }
   }));
 
@@ -205,6 +252,13 @@ const WebViewComponent = forwardRef<WebViewComponentRef, WebViewComponentProps>(
       useNativeDriver: true,
     }).start();
   }, [fadeAnim]);
+
+  // Fetch the installed app version once for the error-overlay footer.
+  React.useEffect(() => {
+    UpdateModule.getCurrentVersion()
+      .then(info => setAppVersion(info.versionName))
+      .catch(() => {});
+  }, []);
 
   // Execute JavaScript from API — with retry if page is still loading
   React.useEffect(() => {
@@ -365,6 +419,17 @@ const WebViewComponent = forwardRef<WebViewComponentRef, WebViewComponentProps>(
     // Touch events avec throttling (for screensaver only, not for tap counting)
     document.addEventListener('touchstart', sendInteraction, true);
     document.addEventListener('touchmove', sendInteraction, true);
+
+    // Keyboard / text input events — typing with the on-screen keyboard does NOT
+    // produce touch/scroll/click events, so without these the inactivity timer
+    // (screensaver + "Return to Start Page") keeps counting down while the user is
+    // typing into a text field. Android soft keyboards with predictive text fire
+    // 'keydown' with keyCode 229 and often skip per-character key events, but
+    // 'input' and 'compositionupdate' fire reliably for every character, so we
+    // listen to all of them (throttled via sendInteraction).
+    document.addEventListener('keydown', sendInteraction, true);
+    document.addEventListener('input', sendInteraction, true);
+    document.addEventListener('compositionupdate', sendInteraction, true);
 
     // ==================== speechSynthesis Polyfill ====================
     // Android WebView does not implement the Web Speech API (speechSynthesis).
@@ -750,6 +815,25 @@ const WebViewComponent = forwardRef<WebViewComponentRef, WebViewComponentProps>(
     }
   };
 
+  // #198 — The Chromium renderer process died (typically an OOM kill). The native
+  // RNCWebViewClient already returns true so the app process survives, but the WebView
+  // instance is now defunct (blank white screen) and, per Android's contract, must be
+  // remounted rather than reused. Best-effort clear the WebView cache to rebuild the
+  // corrupted Chromium code-cache index, then ask the parent to bump webViewKey for a
+  // full remount (same recovery pattern as inactivity return / planner).
+  const handleRenderProcessGone = (event: WebViewRenderProcessGoneEvent): void => {
+    const didCrash = !!event?.nativeEvent?.didCrash;
+    console.error('[FreeKiosk] WebView renderer process gone (didCrash=' + didCrash + '), recovering...');
+    try {
+      webViewRef.current?.clearCache(true);
+    } catch {
+      // Defunct WebView — clearing may throw; the remount below is the real recovery.
+    }
+    if (onRenderProcessGone) {
+      onRenderProcessGone(didCrash);
+    }
+  };
+
   const handleReload = (): void => {
     setError(false);
     setLoading(true);
@@ -839,7 +923,7 @@ const WebViewComponent = forwardRef<WebViewComponentRef, WebViewComponentProps>(
 
             {/* Footer */}
             <Text style={styles.footerText}>
-              Version 1.2.20 • by Rushb
+              {appVersion ? `Version ${appVersion} • by Rushb` : 'by Rushb'}
             </Text>
           </Animated.View>
         </ScrollView>
@@ -848,7 +932,7 @@ const WebViewComponent = forwardRef<WebViewComponentRef, WebViewComponentProps>(
   }
 
   return (
-    <View style={styles.container}>
+    <View style={styles.container} ref={containerViewRef}>
       <WebView
         ref={webViewRef}
         source={{ uri: error ? 'about:blank' : url }}
@@ -908,6 +992,7 @@ const WebViewComponent = forwardRef<WebViewComponentRef, WebViewComponentProps>(
           }
         }}
         onError={handleError}
+        onRenderProcessGone={handleRenderProcessGone}
 
         javaScriptEnabled={true}
         domStorageEnabled={true}

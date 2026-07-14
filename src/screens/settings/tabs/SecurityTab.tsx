@@ -29,6 +29,10 @@ interface SecurityTabProps {
   // Power button
   allowPowerButton: boolean;
   onAllowPowerButtonChange: (value: boolean) => void;
+
+  // Block factory reset (Device Owner only) (#201)
+  blockFactoryReset: boolean;
+  onBlockFactoryResetChange: (value: boolean) => void;
   
   // Notifications (NFC support)
   allowNotifications: boolean;
@@ -56,6 +60,14 @@ interface SecurityTabProps {
   autoLaunchEnabled: boolean;
   onAutoLaunchChange: (value: boolean) => void;
   onOpenSystemSettings: () => void;
+
+  // System screen-lock compatibility (#199)
+  screenLockCompatEnabled: boolean;
+  onScreenLockCompatChange: (value: boolean) => void;
+
+  // Default launcher / persistent Home (#199)
+  defaultLauncherEnabled: boolean;
+  onDefaultLauncherChange: (value: boolean) => void;
   
   // External app specific
   autoRelaunchApp: boolean;
@@ -103,6 +115,8 @@ const SecurityTab: React.FC<SecurityTabProps> = ({
   onKioskEnabledChange,
   allowPowerButton,
   onAllowPowerButtonChange,
+  blockFactoryReset,
+  onBlockFactoryResetChange,
   allowNotifications,
   onAllowNotificationsChange,
   allowSystemInfo,
@@ -122,6 +136,10 @@ const SecurityTab: React.FC<SecurityTabProps> = ({
   autoLaunchEnabled,
   onAutoLaunchChange,
   onOpenSystemSettings,
+  screenLockCompatEnabled,
+  onScreenLockCompatChange,
+  defaultLauncherEnabled,
+  onDefaultLauncherChange,
   autoRelaunchApp,
   onAutoRelaunchAppChange,
   backButtonMode,
@@ -231,6 +249,19 @@ const SecurityTab: React.FC<SecurityTabProps> = ({
             />
           </>
         )}
+
+        {/* Block factory reset — Device Owner only, independent of Lock Mode (#201) */}
+        {isDeviceOwner && (
+          <>
+            <View style={styles.divider} />
+            <SettingsSwitch
+              label="🛑 Block Factory Reset"
+              hint="Removes the 'Factory reset' option from the system Settings app (Device Owner restriction). Useful when the Settings app is on your multi-app whitelist, so locked users can't wipe the device. Persists across reboots. Takes effect immediately, even outside Lock Mode."
+              value={blockFactoryReset}
+              onValueChange={onBlockFactoryResetChange}
+            />
+          </>
+        )}
       </SettingsSection>
       
       {/* Auto Launch */}
@@ -254,6 +285,46 @@ const SecurityTab: React.FC<SecurityTabProps> = ({
           variant="primary"
           onPress={onOpenSystemSettings}
         />
+
+        {/* System screen-lock compatibility — Device Owner only (#199) */}
+        {isDeviceOwner && (
+          <>
+            <View style={styles.divider} />
+            <SettingsSwitch
+              label="🔐 System screen-lock compatibility"
+              hint="Enable ONLY if you set a native Android screen-lock (PIN/password) on this device. FreeKiosk then (1) steps aside for the secure lock screen at boot instead of locking immediately — preventing the reboot freeze caused by the conflict between the kiosk and the secure lock screen — and (2) keeps the system keyguard active while pinned, so the screen-lock actually prompts after the screen turns off and back on (without this, lock-task mode disables the keyguard and the password never appears). ⚠️ A system screen-lock means someone must enter the password on the device after every reboot before the kiosk starts, and on every wake — unsuitable for unattended devices. For device security, the FreeKiosk exit PIN + Device Owner is usually the better choice."
+              value={screenLockCompatEnabled}
+              onValueChange={onScreenLockCompatChange}
+            />
+            {screenLockCompatEnabled && (
+              <SettingsInfoBox variant="warning">
+                <Text style={styles.infoText}>
+                  ⚠️ With a native screen-lock set, the device will require the password to be entered manually after every reboot before FreeKiosk launches. This has no effect unless an Android screen-lock is actually configured.
+                </Text>
+              </SettingsInfoBox>
+            )}
+          </>
+        )}
+
+        {/* Default launcher / persistent Home (#199) — works with or without Device Owner */}
+        <View style={styles.divider} />
+        <SettingsSwitch
+          label="🏠 Set FreeKiosk as default launcher"
+          hint={isDeviceOwner
+            ? "Makes FreeKiosk the persistent Home app via Device Owner. The system then relaunches FreeKiosk by itself after every reboot and system update, without relying on the OEM 'Appear on top' / Autostart permissions that some brands (e.g. Samsung) reset on OS updates — the main cause of the kiosk dropping out after a reboot/update. The Home button also returns here. Turning this off restores your normal launcher."
+            : "Opens the system Home-app picker so you can set FreeKiosk as the default launcher. The system then relaunches FreeKiosk at boot. Without Device Owner this choice is not locked — the user can change it back and some brands may reset it on a system update (Device Owner makes it permanent)."}
+          value={defaultLauncherEnabled}
+          onValueChange={onDefaultLauncherChange}
+        />
+        {defaultLauncherEnabled && (
+          <SettingsInfoBox variant="warning">
+            <Text style={styles.infoText}>
+              {isDeviceOwner
+                ? '⚠️ FreeKiosk becomes the device Home/launcher. If the app were to crash on launch there is no fallback launcher, so test on one device before fleet rollout. Disabling this (or removing Device Owner) restores the normal launcher.'
+                : '⚠️ Pick FreeKiosk in the Home-app screen that opens. This is not enforced without Device Owner and may be reset by a system update. To remove it later, choose another launcher in the same system screen.'}
+            </Text>
+          </SettingsInfoBox>
+        )}
       </SettingsSection>
       
       {/* Return to Settings */}

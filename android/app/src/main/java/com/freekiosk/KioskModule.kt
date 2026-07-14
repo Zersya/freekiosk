@@ -8,6 +8,11 @@ import android.content.Intent
 import android.content.pm.PackageManager
 import android.os.SystemClock
 import android.view.KeyEvent
+import android.view.View
+import android.view.ViewGroup
+import android.webkit.WebView
+import com.facebook.react.uimanager.UIManagerHelper
+import com.facebook.react.uimanager.common.UIManagerType
 import com.facebook.react.bridge.ReactApplicationContext
 import com.facebook.react.bridge.ReactContextBaseJavaModule
 import com.facebook.react.bridge.ReactMethod
@@ -82,6 +87,63 @@ class KioskModule(reactContext: ReactApplicationContext) : ReactContextBaseJavaM
         }
     }
 
+    // #135 — Dismiss the soft keyboard at the window level. React Native's
+    // Keyboard.dismiss() only affects RN TextInput components, so a keyboard
+    // raised by an <input> inside the WebView stays up when the screensaver
+    // activates (screen on, no ACTION_SCREEN_OFF). This closes it regardless.
+    @ReactMethod
+    fun hideKeyboard(promise: Promise) {
+        try {
+            val activity = reactApplicationContext.currentActivity
+            if (activity != null) {
+                KeyboardUtils.dismiss(activity)
+            }
+            promise.resolve(true)
+        } catch (e: Exception) {
+            promise.resolve(false)
+        }
+    }
+
+    // #177 — Pause/resume the Android WebView identified by [tag] (its React node handle).
+    // react-native-webview's onHostPause() is a no-op, so WebView media keeps playing when the
+    // app is backgrounded / the screen is off / the screensaver overlay is shown. WebView.onPause()
+    // suspends the renderer (media, animations, WebRTC). Targeted by tag so only the main content
+    // WebView is affected — never the screensaver's own WebView.
+    @ReactMethod
+    fun pauseWebView(tag: Int, promise: Promise) = setWebViewPaused(tag, true, promise)
+
+    @ReactMethod
+    fun resumeWebView(tag: Int, promise: Promise) = setWebViewPaused(tag, false, promise)
+
+    private fun setWebViewPaused(tag: Int, paused: Boolean, promise: Promise) {
+        UiThreadUtil.runOnUiThread {
+            try {
+                val uiManager = UIManagerHelper.getUIManager(reactApplicationContext, UIManagerType.FABRIC)
+                val webView = findWebView(uiManager?.resolveView(tag))
+                if (webView == null) {
+                    promise.resolve(false)
+                    return@runOnUiThread
+                }
+                if (paused) webView.onPause() else webView.onResume()
+                promise.resolve(true)
+            } catch (e: Exception) {
+                // Never crash: the view may have been unmounted (race) or resolveView may throw.
+                promise.resolve(false)
+            }
+        }
+    }
+
+    private fun findWebView(view: View?): WebView? {
+        if (view == null) return null
+        if (view is WebView) return view
+        if (view is ViewGroup) {
+            for (i in 0 until view.childCount) {
+                findWebView(view.getChildAt(i))?.let { return it }
+            }
+        }
+        return null
+    }
+
     @ReactMethod
     fun exitKioskMode(promise: Promise) {
         try {
@@ -130,6 +192,57 @@ class KioskModule(reactContext: ReactApplicationContext) : ReactContextBaseJavaM
     }
 
     /**
+     * #199 — Persist the opt-in "system screen-lock compatibility" flag to device-encrypted
+     * storage the moment the user toggles it, so BootReceiver can honour it at the very next
+     * LOCKED_BOOT_COMPLETED (before AsyncStorage/CE is available). No-op effect on boot unless
+     * the user also has a secure screen-lock set.
+     */
+    @ReactMethod
+    fun setScreenLockCompatMode(enabled: Boolean, promise: Promise) {
+        try {
+            BootReceiver.updateScreenLockCompatFlag(reactApplicationContext, enabled)
+            promise.resolve(true)
+        } catch (e: Exception) {
+            promise.reject("ERROR", "Failed to set screen-lock compat mode: ${e.message}")
+        }
+    }
+
+    /**
+     * #199 — Opt-in: register/unregister FreeKiosk as the PERSISTENT default Home launcher via the
+     * Device Owner policy, applied the instant the user toggles the setting. When ON, the system
+     * relaunches FreeKiosk at boot/Home without relying on OEM "appear on top" / autostart
+     * permissions (which Samsung resets on OS updates). Requires Device Owner. MainActivity also
+     * re-applies this on every launch (self-healing); clearing on toggle-OFF here restores the
+     * normal launcher immediately.
+     */
+    @ReactMethod
+    fun setDefaultLauncherMode(enabled: Boolean, promise: Promise) {
+        try {
+            val dpm = reactApplicationContext.getSystemService(Context.DEVICE_POLICY_SERVICE) as DevicePolicyManager
+            val admin = ComponentName(reactApplicationContext, DeviceAdminReceiver::class.java)
+            if (!dpm.isDeviceOwnerApp(reactApplicationContext.packageName)) {
+                promise.reject("NOT_DEVICE_OWNER", "Default launcher mode requires Device Owner")
+                return
+            }
+            // Clear our own persistent preferences first (idempotent), then re-add when enabling.
+            dpm.clearPackagePersistentPreferredActivities(admin, reactApplicationContext.packageName)
+            if (enabled) {
+                val filter = android.content.IntentFilter(Intent.ACTION_MAIN).apply {
+                    addCategory(Intent.CATEGORY_HOME)
+                    addCategory(Intent.CATEGORY_DEFAULT)
+                }
+                dpm.addPersistentPreferredActivity(
+                    admin, filter, ComponentName(reactApplicationContext, MainActivity::class.java)
+                )
+            }
+            android.util.Log.d("KioskModule", "Default launcher mode set: $enabled")
+            promise.resolve(true)
+        } catch (e: Exception) {
+            promise.reject("ERROR", "Failed to set default launcher mode: ${e.message}")
+        }
+    }
+
+    /**
      * Stop the KioskWatchdogService and cancel its notification.
      * Called on intentional kiosk exit to prevent the watchdog from relaunching the app.
      */
@@ -143,6 +256,37 @@ class KioskModule(reactContext: ReactApplicationContext) : ReactContextBaseJavaM
             android.util.Log.d("KioskModule", "KioskWatchdogService stopped and notification cleared")
         } catch (e: Exception) {
             android.util.Log.e("KioskModule", "Error stopping KioskWatchdogService: ${e.message}")
+        }
+    }
+
+    /**
+     * Block (or unblock) the factory reset option in system Settings via a Device Owner
+     * user restriction (#201). Unlike lock-task features, DISALLOW_FACTORY_RESET is a
+     * persistent restriction that survives reboots, so it just needs to be set/cleared here.
+     * No-op (resolves false) when not Device Owner.
+     */
+    @ReactMethod
+    fun setFactoryResetBlocked(blocked: Boolean, promise: Promise) {
+        try {
+            val dpm = reactApplicationContext.getSystemService(Context.DEVICE_POLICY_SERVICE) as DevicePolicyManager
+            val adminComponent = ComponentName(reactApplicationContext, DeviceAdminReceiver::class.java)
+
+            if (!dpm.isDeviceOwnerApp(reactApplicationContext.packageName)) {
+                android.util.Log.d("KioskModule", "setFactoryResetBlocked: not Device Owner, no-op")
+                promise.resolve(false)
+                return
+            }
+
+            if (blocked) {
+                dpm.addUserRestriction(adminComponent, android.os.UserManager.DISALLOW_FACTORY_RESET)
+            } else {
+                dpm.clearUserRestriction(adminComponent, android.os.UserManager.DISALLOW_FACTORY_RESET)
+            }
+            android.util.Log.d("KioskModule", "Factory reset restriction ${if (blocked) "applied" else "cleared"}")
+            promise.resolve(true)
+        } catch (e: Exception) {
+            android.util.Log.e("KioskModule", "setFactoryResetBlocked error: ${e.message}")
+            promise.resolve(false)
         }
     }
 
@@ -207,8 +351,20 @@ class KioskModule(reactContext: ReactApplicationContext) : ReactContextBaseJavaM
                                     // Android requires HOME feature when NOTIFICATIONS is enabled
                                     lockTaskFeatures = lockTaskFeatures or DevicePolicyManager.LOCK_TASK_FEATURE_HOME
                                 }
+
+                                // #208 — Keep the system keyguard alive while in lock task so a native
+                                // screen-lock (PIN/pattern/password) actually prompts after screen off/on.
+                                // Without LOCK_TASK_FEATURE_KEYGUARD, Android disables the keyguard in
+                                // LockTask mode and the configured screen-lock never appears. Gated on the
+                                // opt-in "System screen-lock compatibility" setting AND a secure lock being set.
+                                val screenLockCompat = BootReceiver.readScreenLockCompatFlag(reactApplicationContext) &&
+                                    BootReceiver.isDeviceSecure(reactApplicationContext)
+                                if (screenLockCompat) {
+                                    lockTaskFeatures = lockTaskFeatures or DevicePolicyManager.LOCK_TASK_FEATURE_KEYGUARD
+                                }
+
                                 dpm.setLockTaskFeatures(adminComponent, lockTaskFeatures)
-                                android.util.Log.d("KioskModule", "Lock task features set: blockPowerButton=${!allowPowerButton}, notifications=$allowNotifications, systemInfo=$allowSystemInfo (flags=$lockTaskFeatures)")
+                                android.util.Log.d("KioskModule", "Lock task features set: blockPowerButton=${!allowPowerButton}, notifications=$allowNotifications, systemInfo=$allowSystemInfo, keyguard=$screenLockCompat (flags=$lockTaskFeatures)")
                             }
 
                             dpm.setLockTaskPackages(adminComponent, uniqueWhitelist.toTypedArray())
@@ -483,6 +639,13 @@ class KioskModule(reactContext: ReactApplicationContext) : ReactContextBaseJavaM
             
             if (dpm.isDeviceOwnerApp(reactApplicationContext.packageName)) {
                 try {
+                    // #199 — Restore the normal launcher before relinquishing Device Owner, so the
+                    // user isn't left stuck with FreeKiosk as the persistent Home with no DO to undo it.
+                    try {
+                        dpm.clearPackagePersistentPreferredActivities(adminComponent, reactApplicationContext.packageName)
+                    } catch (e: Exception) {
+                        android.util.Log.w("KioskModule", "Could not clear launcher policy before DO removal: ${e.message}")
+                    }
                     dpm.clearDeviceOwnerApp(reactApplicationContext.packageName)
                     android.util.Log.d("KioskModule", "Device Owner removed successfully")
                     promise.resolve(true)
@@ -1081,6 +1244,7 @@ class KioskModule(reactContext: ReactApplicationContext) : ReactContextBaseJavaM
                 "date", "time" -> android.provider.Settings.ACTION_DATE_SETTINGS
                 "security" -> android.provider.Settings.ACTION_SECURITY_SETTINGS
                 "accessibility" -> android.provider.Settings.ACTION_ACCESSIBILITY_SETTINGS
+                "home", "launcher" -> android.provider.Settings.ACTION_HOME_SETTINGS
                 else -> android.provider.Settings.ACTION_SETTINGS
             }
 

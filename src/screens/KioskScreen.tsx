@@ -45,6 +45,8 @@ const KioskScreen: React.FC<KioskScreenProps> = ({ navigation }) => {
   const isFocused = useIsFocused();
   const [url, setUrl] = useState<string>('');
   const [autoReload, setAutoReload] = useState<boolean>(false);
+  // #177 — Pause WebView audio/video when the page is hidden (screensaver / screen off / background)
+  const [pauseWebMediaWhenHidden, setPauseWebMediaWhenHidden] = useState<boolean>(true);
   const [screensaverEnabled, setScreensaverEnabled] = useState(false);
   const [isScreensaverActive, setIsScreensaverActive] = useState(false);
   const [defaultBrightness, setDefaultBrightness] = useState<number>(0.5);
@@ -165,6 +167,10 @@ const KioskScreen: React.FC<KioskScreenProps> = ({ navigation }) => {
 
   // WebView reload key - increment to force reload
   const [webViewKey, setWebViewKey] = useState<number>(0);
+  // #198 — guard against a renderer crash-loop: track consecutive renderer-gone
+  // remounts within a short window so a WebView that dies immediately on every
+  // load doesn't get hammered into an infinite tight remount loop.
+  const rendererGoneRef = useRef<{ last: number; count: number }>({ last: 0, count: 0 });
   
   // JavaScript to execute in WebView (from API) - use object with counter to handle same code twice
   const [jsToExecute, setJsToExecute] = useState<string>('');
@@ -364,6 +370,47 @@ const KioskScreen: React.FC<KioskScreenProps> = ({ navigation }) => {
     
     handleAutoBrightnessForScreensaver();
   }, [isScreensaverActive, autoBrightnessEnabled, autoBrightnessMin, autoBrightnessMax, autoBrightnessOffset, autoBrightnessInterval, screensaverBrightness, isScheduledSleep, screensaverType, displayMode]);
+
+  // #135 — Dismiss the soft keyboard whenever the screensaver activates.
+  // Keyboard.dismiss() (RN) only closes keyboards owned by RN TextInputs; a keyboard
+  // raised by an <input> inside the WebView (e.g. a web login field in Force Numeric
+  // mode) stays up because the screen never physically turns off in "Keep Screen On"
+  // mode, so ACTION_SCREEN_OFF never fires. The native hideKeyboard() acts on the
+  // activity window and closes it regardless of origin. Covers every activation path
+  // (inactivity timer, motion pre-check, MQTT/REST screen off, scheduled sleep).
+  useEffect(() => {
+    if (isScreensaverActive) {
+      Keyboard.dismiss();
+      KioskModule.hideKeyboard?.().catch(() => {});
+    }
+  }, [isScreensaverActive]);
+
+  // #177 — Pause WebView audio/video while the screensaver overlay is shown (the page keeps
+  // running underneath, so a web radio would otherwise stay audible and uncontrollable), and
+  // resume the renderer when it's dismissed. Opt-in (default on); WebView mode only.
+  useEffect(() => {
+    if (!pauseWebMediaWhenHidden || displayMode !== 'webview') return;
+    if (isScreensaverActive) {
+      webViewRef.current?.pauseMedia();
+    } else {
+      webViewRef.current?.resumeMedia();
+    }
+  }, [isScreensaverActive, pauseWebMediaWhenHidden, displayMode]);
+
+  // #177 — Pause WebView audio/video when the whole app is backgrounded (e.g. system screen
+  // off when "Keep Screen On" is disabled — react-native-webview's onHostPause() is a no-op,
+  // so media would keep playing). Resume on return, unless the screensaver is still showing.
+  useEffect(() => {
+    if (!pauseWebMediaWhenHidden || displayMode !== 'webview') return;
+    const sub = AppState.addEventListener('change', (state) => {
+      if (state === 'background') {
+        webViewRef.current?.pauseMedia();
+      } else if (state === 'active' && !isScreensaverActiveRef.current) {
+        webViewRef.current?.resumeMedia();
+      }
+    });
+    return () => sub.remove();
+  }, [pauseWebMediaWhenHidden, displayMode]);
 
   // Deactivate screensaver when the screen loses focus (navigating to Settings)
   // Only triggers cleanup on actual focus→blur transition (not when other deps change)
@@ -1421,6 +1468,7 @@ const KioskScreen: React.FC<KioskScreenProps> = ({ navigation }) => {
       const savedUrl = str(K.URL);
       console.log('[KioskScreen] savedUrl:', savedUrl);
       const savedAutoReload = bool(K.AUTO_RELOAD, true);
+      const savedPauseWebMediaWhenHidden = bool(K.PAUSE_WEB_MEDIA_WHEN_HIDDEN, true);
       const savedKioskEnabled = bool(K.KIOSK_ENABLED, false);
       const savedScreensaverEnabled = bool(K.SCREENSAVER_ENABLED, false);
       const savedDefaultBrightness = num(K.DEFAULT_BRIGHTNESS, 0.5);
@@ -1447,6 +1495,10 @@ const KioskScreen: React.FC<KioskScreenProps> = ({ navigation }) => {
 
       if (savedUrl) setUrl(savedUrl);
       setAutoReload(savedAutoReload);
+      setPauseWebMediaWhenHidden(savedPauseWebMediaWhenHidden);
+      // #205 — re-apply the opt-in 2-way audio (intercom) mode on each kiosk launch: the
+      // native AudioRecordingCallback registration doesn't survive an app restart. No-op when off.
+      try { NativeModules.AudioControlModule?.setIntercomMode(bool(K.INTERCOM_MODE, false)); } catch {}
       setScreensaverEnabled(savedScreensaverEnabled);
       
       // Broadcast that settings are loaded (for ADB config waiting)
@@ -1487,6 +1539,7 @@ const KioskScreen: React.FC<KioskScreenProps> = ({ navigation }) => {
       const savedBackButtonTimerDelay = num(K.BACK_BUTTON_TIMER_DELAY, 5);
       const savedKeyboardMode = str(K.KEYBOARD_MODE) ?? 'default';
       const savedAllowPowerButton = bool(K.ALLOW_POWER_BUTTON, true);
+      const savedBlockFactoryReset = bool(K.BLOCK_FACTORY_RESET, false);
       const savedAllowNotifications = bool(K.ALLOW_NOTIFICATIONS, false);
       const savedAllowSystemInfo = bool(K.ALLOW_SYSTEM_INFO, false);
 
@@ -1498,7 +1551,15 @@ const KioskScreen: React.FC<KioskScreenProps> = ({ navigation }) => {
       setKeyboardMode(savedKeyboardMode);
       setAllowPowerButton(savedAllowPowerButton);
       setAllowNotifications(savedAllowNotifications);
-      
+
+      // Reconcile factory-reset restriction with the stored toggle on every launch (#201),
+      // independently of Lock Mode. No-op natively if not Device Owner.
+      try {
+        await KioskModule.setFactoryResetBlocked(savedBlockFactoryReset);
+      } catch (error) {
+        console.warn('[KioskScreen] setFactoryResetBlocked reconcile error (non-blocking):', error);
+      }
+
       // Load managed apps
       const savedManagedApps = await StorageService.getManagedApps();
       setManagedApps(savedManagedApps);
@@ -1899,29 +1960,45 @@ const KioskScreen: React.FC<KioskScreenProps> = ({ navigation }) => {
     }
   };
 
+  // #190 — Body of the inactivity expiry: optional motion pre-check, then activate the
+  // screensaver. Extracted so it can be triggered by either the JS setTimeout (WebView/
+  // media modes) or the native inactivity event (External App mode, where RN freezes JS
+  // timers while FreeKiosk is backgrounded behind the external app).
+  const triggerScreensaverTimeout = useCallback(() => {
+    if (isScheduledSleep) return;
+    if (!(screensaverEnabled && inactivityEnabled)) return;
+    // #190 — No motion pre-check in External App mode: FreeKiosk is backgrounded there,
+    // so the 10s pre-check setTimeout below is frozen by RN (the exact timer freeze the
+    // native countdown works around) and the screensaver never activated. The camera
+    // can't capture from the background anyway, so the pre-check could never see motion.
+    // Activate directly; wake-on-motion still works once the screensaver has brought
+    // FreeKiosk back to the foreground.
+    if (motionEnabled && displayMode !== 'external_app') {
+      console.log('[KioskScreen] Inactivity expired — starting motion pre-check');
+      setIsPreCheckingMotion(true);
+      // Pre-check window; if no motion is detected within it, activate the screensaver
+      preCheckTimerRef.current = setTimeout(() => {
+        console.log(`[KioskScreen] No motion detected after ${MOTION_PRE_CHECK_DELAY_MS}ms — activating screensaver`);
+        Keyboard.dismiss();
+        setIsScreensaverActive(true);
+        setIsPreCheckingMotion(false);
+      }, MOTION_PRE_CHECK_DELAY_MS);
+    } else {
+      Keyboard.dismiss();
+      setIsScreensaverActive(true);
+    }
+  }, [isScheduledSleep, screensaverEnabled, inactivityEnabled, motionEnabled, displayMode]);
+
   const resetTimer = () => {
     clearTimer();
     // Don't start inactivity timer if screen is in scheduled sleep
     if (isScheduledSleep) return;
+    // External App mode: RN freezes JS timers while FreeKiosk is backgrounded, so the
+    // native countdown in OverlayService drives screensaver activation instead. #190
+    if (displayMode === 'external_app') return;
     if (screensaverEnabled && inactivityEnabled) {
       timerRef.current = setTimeout(() => {
-        // If motion detection is enabled, watch for movement before activating the screensaver
-        if (motionEnabled) {
-          console.log('[KioskScreen] Inactivity timer expired — starting motion pre-check');
-          setIsPreCheckingMotion(true);
-          // Start a pre-check window; if no motion is detected within it, activate the screensaver
-          preCheckTimerRef.current = setTimeout(() => {
-            console.log(`[KioskScreen] No motion detected after ${MOTION_PRE_CHECK_DELAY_MS}ms — activating screensaver`);
-            Keyboard.dismiss();
-            setIsScreensaverActive(true);
-            // Keep isPreCheckingMotion false since the screensaver takes over
-            setIsPreCheckingMotion(false);
-          }, MOTION_PRE_CHECK_DELAY_MS);
-        } else {
-          // No motion detection — activate directly
-          Keyboard.dismiss();
-          setIsScreensaverActive(true);
-        }
+        triggerScreensaverTimeout();
       }, inactivityDelay);
     }
   };
@@ -1939,6 +2016,32 @@ const KioskScreen: React.FC<KioskScreenProps> = ({ navigation }) => {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []); // only refs and stable setState — safe to omit
 
+  // #190 — External App mode: drive the inactivity countdown natively, since the JS
+  // setTimeout is frozen while FreeKiosk is backgrounded behind the external app. The
+  // native timer (OverlayService) re-arms on every tap and emits `inactivityExpiredNative`.
+  // Re-armed whenever the screensaver is dismissed (isScreensaverActive → false); disarmed
+  // during the motion pre-check, while the screensaver is active, or during scheduled sleep
+  // so it can never double-fire. Only touches the overlay service in external_app mode.
+  useEffect(() => {
+    if (displayMode !== 'external_app') return;
+    const enabled =
+      screensaverEnabled && inactivityEnabled &&
+      !isScreensaverActive && !isPreCheckingMotion && !isScheduledSleep;
+    OverlayServiceModule.updateInactivityConfig?.(inactivityDelay, enabled).catch(() => {});
+  }, [displayMode, screensaverEnabled, inactivityEnabled, inactivityDelay, isScreensaverActive, isPreCheckingMotion, isScheduledSleep]);
+
+  // #190 — Native inactivity countdown expired (External App mode) → run the same
+  // screensaver-activation path the JS timer would have run.
+  useEffect(() => {
+    const emitter = new NativeEventEmitter(NativeModules.DeviceEventManagerModule);
+    const sub = emitter.addListener('inactivityExpiredNative', () => {
+      if (displayMode !== 'external_app') return;
+      console.log('[KioskScreen] Native inactivity event received — triggering screensaver');
+      triggerScreensaverTimeout();
+    });
+    return () => sub.remove();
+  }, [displayMode, triggerScreensaverTimeout]);
+
   // ==================== Inactivity Return to Home ====================
   // Simple approach: use a single ref for the "last user interaction" timestamp
   // A single useEffect manages the timer based on all relevant state
@@ -1954,6 +2057,28 @@ const KioskScreen: React.FC<KioskScreenProps> = ({ navigation }) => {
   // Mark user interaction timestamp (called from onUserInteraction)
   const markUserInteraction = useCallback(() => {
     lastUserInteractionRef.current = Date.now();
+  }, []);
+
+  // #198 — WebView renderer process died (white screen). Force a full remount of the
+  // WebView (new native instance, as Android requires after onRenderProcessGone). A
+  // crash-loop guard backs off to a delayed remount if the renderer dies repeatedly in
+  // quick succession, so a page that crashes on every load can't pin the CPU.
+  const handleWebViewRenderProcessGone = useCallback((didCrash: boolean) => {
+    const now = Date.now();
+    const g = rendererGoneRef.current;
+    // Reset the streak if the last crash was a while ago (recovery considered stable).
+    if (now - g.last > 30000) {
+      g.count = 0;
+    }
+    g.last = now;
+    g.count += 1;
+    console.warn(`[KioskScreen] WebView renderer gone (didCrash=${didCrash}), remount #${g.count}`);
+    if (g.count > 3) {
+      // Repeated rapid crashes — back off before remounting to avoid a tight loop.
+      setTimeout(() => setWebViewKey(prev => prev + 1), 5000);
+    } else {
+      setWebViewKey(prev => prev + 1);
+    }
   }, []);
 
   // Single useEffect that manages the inactivity return timer
@@ -2486,6 +2611,7 @@ const KioskScreen: React.FC<KioskScreenProps> = ({ navigation }) => {
                   ? { username: basicAuthUsername, password: basicAuthPassword }
                   : undefined
               }
+              onRenderProcessGone={handleWebViewRenderProcessGone}
             />
           )}
         </>

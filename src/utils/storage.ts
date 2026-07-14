@@ -12,6 +12,9 @@ const KEYS = {
   AUTO_RELOAD: '@kiosk_auto_reload',
   KIOSK_ENABLED: '@kiosk_enabled',
   AUTO_LAUNCH: '@kiosk_auto_launch',
+  SCREEN_LOCK_COMPAT: '@kiosk_screen_lock_compat',
+  DEFAULT_LAUNCHER: '@kiosk_default_launcher',
+  INTERCOM_MODE: '@kiosk_intercom_mode',
   SCREENSAVER_ENABLED: '@screensaver_enabled',
   SCREENSAVER_INACTIVITY_ENABLED: '@screensaver_inactivity_enabled',
   SCREENSAVER_INACTIVITY_DELAY: '@screensaver_inactivity_delay',
@@ -61,6 +64,8 @@ const KEYS = {
   REST_API_REMOTE_SCREENSHOT: '@kiosk_rest_api_remote_screenshot',
   // Power Button setting
   ALLOW_POWER_BUTTON: '@kiosk_allow_power_button',
+  // Block factory reset in system Settings (Device Owner user restriction) (#201)
+  BLOCK_FACTORY_RESET: '@kiosk_block_factory_reset',
   // Notifications (NFC support)
   ALLOW_NOTIFICATIONS: '@kiosk_allow_notifications',
   // Allow System Info (audio fix for Samsung in lock mode)
@@ -121,6 +126,8 @@ const KEYS = {
   DISABLE_USER_ZOOM: '@kiosk_disable_user_zoom',
   // Custom User Agent
   CUSTOM_USER_AGENT: '@kiosk_custom_user_agent',
+  // #177 — Pause WebView audio/video when the page is hidden (screensaver / screen off / background)
+  PAUSE_WEB_MEDIA_WHEN_HIDDEN: '@kiosk_pause_web_media_when_hidden',
   // MQTT (Home Assistant integration)
   MQTT_ENABLED: '@kiosk_mqtt_enabled',
   MQTT_BROKER_URL: '@kiosk_mqtt_broker_url',
@@ -263,6 +270,63 @@ export const StorageService = {
       return value ? JSON.parse(value) : false;
     } catch (error) {
       console.error('Error getting auto launch:', error);
+      return false;
+    }
+  },
+
+  //SCREEN LOCK COMPATIBILITY (#199) — opt-in; default false so behavior is unchanged
+  saveScreenLockCompat: async (value: boolean): Promise<void> => {
+    try {
+      await AsyncStorage.setItem(KEYS.SCREEN_LOCK_COMPAT, JSON.stringify(value));
+    } catch (error) {
+      console.error('Error saving screen lock compatibility:', error);
+    }
+  },
+
+  getScreenLockCompat: async (): Promise<boolean> => {
+    try {
+      const value = await AsyncStorage.getItem(KEYS.SCREEN_LOCK_COMPAT);
+      return value ? JSON.parse(value) : false;
+    } catch (error) {
+      console.error('Error getting screen lock compatibility:', error);
+      return false;
+    }
+  },
+
+  //DEFAULT LAUNCHER (#199) — opt-in, Device Owner only; default false → behavior unchanged
+  saveDefaultLauncher: async (value: boolean): Promise<void> => {
+    try {
+      await AsyncStorage.setItem(KEYS.DEFAULT_LAUNCHER, JSON.stringify(value));
+    } catch (error) {
+      console.error('Error saving default launcher:', error);
+    }
+  },
+
+  getDefaultLauncher: async (): Promise<boolean> => {
+    try {
+      const value = await AsyncStorage.getItem(KEYS.DEFAULT_LAUNCHER);
+      return value ? JSON.parse(value) : false;
+    } catch (error) {
+      console.error('Error getting default launcher:', error);
+      return false;
+    }
+  },
+
+  //2-WAY AUDIO / INTERCOM MODE (#205) — opt-in; default false → behavior unchanged
+  saveIntercomMode: async (value: boolean): Promise<void> => {
+    try {
+      await AsyncStorage.setItem(KEYS.INTERCOM_MODE, JSON.stringify(value));
+    } catch (error) {
+      console.error('Error saving intercom mode:', error);
+    }
+  },
+
+  getIntercomMode: async (): Promise<boolean> => {
+    try {
+      const value = await AsyncStorage.getItem(KEYS.INTERCOM_MODE);
+      return value ? JSON.parse(value) : false;
+    } catch (error) {
+      console.error('Error getting intercom mode:', error);
       return false;
     }
   },
@@ -1410,6 +1474,25 @@ export const StorageService = {
     }
   },
 
+  // BLOCK FACTORY RESET (#201)
+  saveBlockFactoryReset: async (value: boolean): Promise<void> => {
+    try {
+      await AsyncStorage.setItem(KEYS.BLOCK_FACTORY_RESET, JSON.stringify(value));
+    } catch (error) {
+      console.error('Error saving block factory reset:', error);
+    }
+  },
+
+  getBlockFactoryReset: async (): Promise<boolean> => {
+    try {
+      const value = await AsyncStorage.getItem(KEYS.BLOCK_FACTORY_RESET);
+      return value ? JSON.parse(value) : false; // Default OFF - opt-in, no behavior change for existing installs
+    } catch (error) {
+      console.error('Error getting block factory reset:', error);
+      return false;
+    }
+  },
+
   // NOTIFICATIONS (NFC SUPPORT)
   saveAllowNotifications: async (value: boolean): Promise<void> => {
     try {
@@ -1521,44 +1604,6 @@ export const StorageService = {
     } catch (error) {
       console.error('Error getting return button position:', error);
       return 'bottom-right';
-    }
-  },
-
-  saveReturnButtonXPercent: async (value: number): Promise<void> => {
-    try {
-      await AsyncStorage.setItem(KEYS.RETURN_BUTTON_X_PERCENT, String(value));
-    } catch (error) {
-      console.error('Error saving return button X percent:', error);
-    }
-  },
-
-  getReturnButtonXPercent: async (): Promise<number> => {
-    try {
-      const value = await AsyncStorage.getItem(KEYS.RETURN_BUTTON_X_PERCENT);
-      const parsed = value ? parseFloat(value) : 92;
-      return isNaN(parsed) ? 92 : Math.max(0, Math.min(100, parsed));
-    } catch (error) {
-      console.error('Error getting return button X percent:', error);
-      return 92;
-    }
-  },
-
-  saveReturnButtonYPercent: async (value: number): Promise<void> => {
-    try {
-      await AsyncStorage.setItem(KEYS.RETURN_BUTTON_Y_PERCENT, String(value));
-    } catch (error) {
-      console.error('Error saving return button Y percent:', error);
-    }
-  },
-
-  getReturnButtonYPercent: async (): Promise<number> => {
-    try {
-      const value = await AsyncStorage.getItem(KEYS.RETURN_BUTTON_Y_PERCENT);
-      const parsed = value ? parseFloat(value) : 92;
-      return isNaN(parsed) ? 92 : Math.max(0, Math.min(100, parsed));
-    } catch (error) {
-      console.error('Error getting return button Y percent:', error);
-      return 92;
     }
   },
 
@@ -2202,6 +2247,27 @@ export const StorageService = {
     } catch (error) {
       console.error('Error getting custom user agent:', error);
       return '';
+    }
+  },
+
+  // ============ Pause web media when hidden (#177) ============
+
+  savePauseWebMediaWhenHidden: async (value: boolean): Promise<void> => {
+    try {
+      await AsyncStorage.setItem(KEYS.PAUSE_WEB_MEDIA_WHEN_HIDDEN, value.toString());
+    } catch (error) {
+      console.error('Error saving pause web media when hidden:', error);
+    }
+  },
+
+  getPauseWebMediaWhenHidden: async (): Promise<boolean> => {
+    try {
+      const value = await AsyncStorage.getItem(KEYS.PAUSE_WEB_MEDIA_WHEN_HIDDEN);
+      // Default ON
+      return value === null ? true : value === 'true';
+    } catch (error) {
+      console.error('Error getting pause web media when hidden:', error);
+      return true;
     }
   },
 

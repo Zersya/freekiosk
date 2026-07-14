@@ -13,6 +13,10 @@ interface KioskModuleInterface {
   clearBlockAutoRelaunch(): Promise<boolean>;
   setBlockAutoRelaunch(block: boolean): Promise<boolean>;
   removeDeviceOwner(): Promise<boolean>;
+  setScreenLockCompatMode(enabled: boolean): Promise<boolean>;
+  // #201 — Block/unblock the factory reset option in system Settings (Device Owner user restriction)
+  setFactoryResetBlocked(blocked: boolean): Promise<boolean>;
+  setDefaultLauncherMode(enabled: boolean): Promise<boolean>;
   reboot(): Promise<boolean>;
   sendRemoteKey(key: string): Promise<boolean>;
   launchEmergencyDial(): Promise<boolean>;
@@ -42,6 +46,12 @@ interface KioskModuleInterface {
   bringToFront(): Promise<boolean>;
   // #180 — Gate the native tap-to-settings fallback to the kiosk screen only
   setKioskScreenActive(active: boolean): Promise<boolean>;
+  // #135 — Dismiss the soft keyboard at the window level (works for WebView inputs too)
+  hideKeyboard(): Promise<boolean>;
+  // #177 — Pause/resume the content WebView's renderer (stops background audio/video).
+  // tag is the React node handle of the WebView (from findNodeHandle).
+  pauseWebView(tag: number): Promise<boolean>;
+  resumeWebView(tag: number): Promise<boolean>;
 }
 
 const { KioskModule } = NativeModules;

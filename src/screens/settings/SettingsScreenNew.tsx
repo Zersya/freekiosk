@@ -49,7 +49,7 @@ import { ManagedApp } from '../../types/managedApps';
 import { MediaItem, MediaFitMode, generateMediaItemId, detectMediaType } from '../../types/mediaPlayer';
 import FilePickerModule from '../../utils/FilePickerModule';
 
-const { KioskModule, RotationControlModule } = NativeModules;
+const { KioskModule, RotationControlModule, AudioControlModule } = NativeModules;
 
 type SettingsScreenNavigationProp = NativeStackNavigationProp<RootStackParamList, 'Settings'>;
 
@@ -85,6 +85,8 @@ const SettingsScreenNew: React.FC<SettingsScreenProps> = ({ navigation }) => {
   const [autoReload, setAutoReload] = useState<boolean>(false);
   const [kioskEnabled, setKioskEnabled] = useState<boolean>(false);
   const [autoLaunchEnabled, setAutoLaunchEnabled] = useState<boolean>(false);
+  const [screenLockCompatEnabled, setScreenLockCompatEnabled] = useState<boolean>(false);
+  const [defaultLauncherEnabled, setDefaultLauncherEnabled] = useState<boolean>(false);
   const [screensaverEnabled, setScreensaverEnabled] = useState<boolean>(false);
   const [inactivityDelay, setInactivityDelay] = useState<string>('10');
   const [motionEnabled, setMotionEnabled] = useState<boolean>(false);
@@ -129,6 +131,7 @@ const SettingsScreenNew: React.FC<SettingsScreenProps> = ({ navigation }) => {
   const [statusBarTheme, setStatusBarTheme] = useState<'dark' | 'light'>('dark');
   const [keyboardMode, setKeyboardMode] = useState<string>('default');
   const [allowPowerButton, setAllowPowerButton] = useState<boolean>(true);
+  const [blockFactoryReset, setBlockFactoryReset] = useState<boolean>(false);
   const [allowNotifications, setAllowNotifications] = useState<boolean>(false);
   const [allowSystemInfo, setAllowSystemInfo] = useState<boolean>(false);
   const [returnMode, setReturnMode] = useState<string>('tap_anywhere');
@@ -212,6 +215,8 @@ const SettingsScreenNew: React.FC<SettingsScreenProps> = ({ navigation }) => {
 
   // Custom User Agent
   const [customUserAgent, setCustomUserAgent] = useState<string>('');
+  const [pauseWebMediaWhenHidden, setPauseWebMediaWhenHidden] = useState<boolean>(true);
+  const [intercomModeEnabled, setIntercomModeEnabled] = useState<boolean>(false);
   const [basicAuthUsername, setBasicAuthUsername] = useState<string>('');
   const [basicAuthPassword, setBasicAuthPassword] = useState<string>('');
   
@@ -426,6 +431,8 @@ const SettingsScreenNew: React.FC<SettingsScreenProps> = ({ navigation }) => {
     const savedAutoReload = await StorageService.getAutoReload();
     const savedKioskEnabled = await StorageService.getKioskEnabled();
     const savedAutoLaunch = await StorageService.getAutoLaunch();
+    const savedScreenLockCompat = await StorageService.getScreenLockCompat();
+    const savedDefaultLauncher = await StorageService.getDefaultLauncher();
     const savedScreensaverEnabled = await StorageService.getScreensaverEnabled();
     const savedDefaultBrightness = await StorageService.getDefaultBrightness();
     const savedInactivityDelay = await StorageService.getScreensaverInactivityDelay();
@@ -446,6 +453,8 @@ const SettingsScreenNew: React.FC<SettingsScreenProps> = ({ navigation }) => {
     setAutoReload(savedAutoReload);
     setKioskEnabled(savedKioskEnabled);
     setAutoLaunchEnabled(savedAutoLaunch ?? false);
+    setScreenLockCompatEnabled(savedScreenLockCompat ?? false);
+    setDefaultLauncherEnabled(savedDefaultLauncher ?? false);
     // Ensure BootReceiver component state matches the setting
     // This fixes installations where the component was previously disabled
     try {
@@ -495,6 +504,7 @@ const SettingsScreenNew: React.FC<SettingsScreenProps> = ({ navigation }) => {
     const savedBackButtonTimerDelay = await StorageService.getBackButtonTimerDelay();
     const savedKeyboardMode = await StorageService.getKeyboardMode();
     const savedAllowPowerButton = await StorageService.getAllowPowerButton();
+    const savedBlockFactoryReset = await StorageService.getBlockFactoryReset();
     const savedAllowNotifications = await StorageService.getAllowNotifications();
     const savedAllowSystemInfo = await StorageService.getAllowSystemInfo();
     const savedReturnMode = await StorageService.getReturnMode();
@@ -564,6 +574,7 @@ const SettingsScreenNew: React.FC<SettingsScreenProps> = ({ navigation }) => {
     setBackButtonTimerDelay(String(savedBackButtonTimerDelay));
     setKeyboardMode(savedKeyboardMode);
     setAllowPowerButton(savedAllowPowerButton);
+    setBlockFactoryReset(savedBlockFactoryReset);
     setAllowNotifications(savedAllowNotifications);
     setAllowSystemInfo(savedAllowSystemInfo);
     setReturnMode(savedReturnMode);
@@ -663,6 +674,10 @@ const SettingsScreenNew: React.FC<SettingsScreenProps> = ({ navigation }) => {
     // Custom User Agent
     const savedCustomUserAgent = await StorageService.getCustomUserAgent();
     setCustomUserAgent(savedCustomUserAgent);
+    const savedPauseWebMediaWhenHidden = await StorageService.getPauseWebMediaWhenHidden();
+    setPauseWebMediaWhenHidden(savedPauseWebMediaWhenHidden);
+    const savedIntercomMode = await StorageService.getIntercomMode();
+    setIntercomModeEnabled(savedIntercomMode ?? false);
 
     const savedBasicAuthUsername = await StorageService.getHttpBasicAuthUsername();
     const savedBasicAuthPassword = await getSecureBasicAuthPassword();
@@ -826,6 +841,52 @@ const SettingsScreenNew: React.FC<SettingsScreenProps> = ({ navigation }) => {
       }
     } catch (error) {
       console.warn('Failed to toggle BootReceiver component:', error);
+    }
+  };
+
+  // #199 — opt-in: when ON and a native screen-lock is set, FreeKiosk steps aside for the
+  // secure keyguard at boot instead of fast-boot-locking over it (avoids the reboot freeze).
+  const toggleScreenLockCompat = async (value: boolean) => {
+    setScreenLockCompatEnabled(value);
+    await StorageService.saveScreenLockCompat(value);
+    // Mirror to device-encrypted storage so BootReceiver can read it at LOCKED_BOOT_COMPLETED,
+    // before credential-encrypted storage (AsyncStorage) is available.
+    try {
+      await KioskModule.setScreenLockCompatMode(value);
+    } catch (error) {
+      console.warn('Failed to sync screen-lock compat mode to native:', error);
+    }
+  };
+
+  // #199 — opt-in: make FreeKiosk the Home launcher so the system relaunches it after
+  // reboots/OS updates without depending on OEM autostart permissions. With Device Owner the
+  // policy is locked/automatic; without it we open the system Home-app picker (manual, not
+  // enforced — see SecurityTab hint).
+  const toggleDefaultLauncher = async (value: boolean) => {
+    setDefaultLauncherEnabled(value);
+    await StorageService.saveDefaultLauncher(value);
+    try {
+      if (isDeviceOwner) {
+        // Apply/clear the persistent Device Owner launcher policy immediately.
+        await KioskModule.setDefaultLauncherMode(value);
+      } else if (value) {
+        // No Device Owner: send the user to the system Home-app picker to choose FreeKiosk.
+        await KioskModule.openAndroidSettings('home');
+      }
+    } catch (error) {
+      console.warn('Failed to apply default launcher mode:', error);
+    }
+  };
+
+  // #205 — opt-in 2-way audio: put the device in communication audio mode only while the
+  // WebView is capturing the mic, so the WebRTC talk-back channel transmits.
+  const toggleIntercomMode = async (value: boolean) => {
+    setIntercomModeEnabled(value);
+    await StorageService.saveIntercomMode(value);
+    try {
+      await AudioControlModule?.setIntercomMode(value);
+    } catch (error) {
+      console.warn('Failed to apply intercom mode:', error);
     }
   };
 
@@ -1377,9 +1438,11 @@ const SettingsScreenNew: React.FC<SettingsScreenProps> = ({ navigation }) => {
     await StorageService.saveWebViewZoomMode(zoomMode);
     await StorageService.saveDisableUserZoom(disableUserZoom);
     await StorageService.saveCustomUserAgent(customUserAgent);
+    await StorageService.savePauseWebMediaWhenHidden(pauseWebMediaWhenHidden);
     await StorageService.saveHttpBasicAuthUsername(basicAuthUsername);
     await saveSecureBasicAuthPassword(basicAuthPassword);
     await StorageService.saveAllowPowerButton(allowPowerButton);
+    await StorageService.saveBlockFactoryReset(blockFactoryReset);
     await StorageService.saveAllowNotifications(allowNotifications);
     await StorageService.saveAllowSystemInfo(allowSystemInfo);
     await StorageService.saveReturnMode(returnMode);
@@ -1495,6 +1558,13 @@ const SettingsScreenNew: React.FC<SettingsScreenProps> = ({ navigation }) => {
       } catch (error) {
         // Silent fail
       }
+    }
+
+    // Apply factory-reset restriction independently of Lock Mode (#201). No-op if not Device Owner.
+    try {
+      await KioskModule.setFactoryResetBlocked(blockFactoryReset);
+    } catch (error) {
+      console.warn('[Settings] setFactoryResetBlocked error (non-blocking):', error);
     }
 
     // Start/stop lock task
@@ -1916,6 +1986,10 @@ const SettingsScreenNew: React.FC<SettingsScreenProps> = ({ navigation }) => {
             onDisableUserZoomChange={setDisableUserZoom}
             customUserAgent={customUserAgent}
             onCustomUserAgentChange={setCustomUserAgent}
+            pauseWebMediaWhenHidden={pauseWebMediaWhenHidden}
+            onPauseWebMediaWhenHiddenChange={setPauseWebMediaWhenHidden}
+            intercomModeEnabled={intercomModeEnabled}
+            onIntercomModeChange={toggleIntercomMode}
             screensaverEnabled={screensaverEnabled}
             onScreensaverEnabledChange={setScreensaverEnabled}
             screensaverBrightness={screensaverBrightness}
@@ -1976,6 +2050,8 @@ const SettingsScreenNew: React.FC<SettingsScreenProps> = ({ navigation }) => {
             onKioskEnabledChange={setKioskEnabled}
             allowPowerButton={allowPowerButton}
             onAllowPowerButtonChange={setAllowPowerButton}
+            blockFactoryReset={blockFactoryReset}
+            onBlockFactoryResetChange={setBlockFactoryReset}
             allowNotifications={allowNotifications}
             onAllowNotificationsChange={setAllowNotifications}
             allowSystemInfo={allowSystemInfo}
@@ -1995,6 +2071,10 @@ const SettingsScreenNew: React.FC<SettingsScreenProps> = ({ navigation }) => {
             autoLaunchEnabled={autoLaunchEnabled}
             onAutoLaunchChange={toggleAutoLaunch}
             onOpenSystemSettings={openSystemSettingsSafely}
+            screenLockCompatEnabled={screenLockCompatEnabled}
+            onScreenLockCompatChange={toggleScreenLockCompat}
+            defaultLauncherEnabled={defaultLauncherEnabled}
+            onDefaultLauncherChange={toggleDefaultLauncher}
             autoRelaunchApp={autoRelaunchApp}
             onAutoRelaunchAppChange={setAutoRelaunchApp}
             backButtonMode={backButtonMode}

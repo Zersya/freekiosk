@@ -127,6 +127,7 @@ class MainActivity : ReactActivity() {
     ensureBootReceiverEnabled()
     hideSystemUI()
     checkAndStartLockTask()
+    applyDefaultLauncherPolicy()
 
     // Start KioskWatchdogService (#96) — survives OOM kills via START_STICKY
     startKioskWatchdogIfNeeded()
@@ -280,11 +281,47 @@ class MainActivity : ReactActivity() {
   private fun checkAndStartLockTask() {
     val kioskEnabled = isKioskEnabled()
     DebugLog.d("MainActivity", "Kiosk enabled: $kioskEnabled")
-    
+
     if (kioskEnabled) {
       startLockTaskIfPossible()
     } else {
       DebugLog.d("MainActivity", "Kiosk mode disabled - normal mode")
+    }
+  }
+
+  /**
+   * Opt-in default-launcher policy (#199). When the "Set FreeKiosk as default launcher"
+   * setting is ON and we are Device Owner, register FreeKiosk (MainActivity) as the PERSISTENT
+   * preferred Home activity. The system then relaunches FreeKiosk itself at every boot and on
+   * Home — with no dependency on the OEM "appear on top" / autostart / background-pop-up
+   * permissions that Samsung resets on OS updates, which is what let the kiosk drop out after a
+   * reboot/update. The policy persists across updates as long as Device Owner is active.
+   *
+   * Reconciled on every launch (self-healing after an OS update): clear our own persistent
+   * preferences, then re-add only if the setting is ON. Gated on Device Owner, and a no-op
+   * unless the opt-in is enabled — so behavior is unchanged for everyone who hasn't turned it on.
+   */
+  private fun applyDefaultLauncherPolicy() {
+    if (!devicePolicyManager.isDeviceOwnerApp(packageName)) return
+    val enabled = getAsyncStorageValue("@kiosk_default_launcher", "false") == "true"
+    try {
+      // Only ever clears persistent preferences set by THIS admin (we set none other than HOME),
+      // so this is safe and idempotent — it prevents duplicate entries accumulating.
+      devicePolicyManager.clearPackagePersistentPreferredActivities(adminComponent, packageName)
+      if (enabled) {
+        val filter = IntentFilter(Intent.ACTION_MAIN).apply {
+          addCategory(Intent.CATEGORY_HOME)
+          addCategory(Intent.CATEGORY_DEFAULT)
+        }
+        devicePolicyManager.addPersistentPreferredActivity(
+          adminComponent, filter, ComponentName(this, MainActivity::class.java)
+        )
+        DebugLog.d("MainActivity", "Default launcher policy applied (FreeKiosk = persistent Home)")
+      } else {
+        DebugLog.d("MainActivity", "Default launcher policy off — persistent Home cleared")
+      }
+    } catch (e: Exception) {
+      DebugLog.errorProduction("MainActivity", "Failed to apply default launcher policy: ${e.message}")
     }
   }
 
@@ -300,6 +337,38 @@ class MainActivity : ReactActivity() {
     } catch (e: Exception) {
       DebugLog.errorProduction("MainActivity", "Error reading preference: ${e.message}")
       false
+    }
+  }
+
+  // Set when startLockTask() failed because the task was not yet in the foreground.
+  // We retry the lock task once the activity actually gains window focus (onWindowFocusChanged).
+  private var lockTaskPending = false
+
+  /**
+   * Calls startLockTask() defensively.
+   *
+   * startLockTask() throws IllegalArgumentException("Invalid task, not in foreground")
+   * when the task is not the foreground task at the moment of the call — which happens
+   * when checkAndStartLockTask() runs from onCreate() while MainActivity is still
+   * backgrounded (e.g. at boot, or the external-app-at-boot path that moves the task to
+   * back). That exception is NOT a SecurityException, so it used to escape the catch in
+   * startLockTaskIfPossible() and crash the app on launch. On that failure we flag the
+   * attempt as pending and retry once the activity gains window focus.
+   */
+  private fun tryStartLockTask(context: String) {
+    try {
+      startLockTask()
+      lockTaskPending = false
+      DebugLog.d("MainActivity", "Lock task started ($context)")
+    } catch (e: IllegalArgumentException) {
+      // "Invalid task, not in foreground" — defer until the activity is truly foregrounded.
+      lockTaskPending = true
+      DebugLog.errorProduction("MainActivity", "Lock task not in foreground yet ($context), will retry on focus: ${e.message}")
+    } catch (e: IllegalStateException) {
+      lockTaskPending = true
+      DebugLog.errorProduction("MainActivity", "Lock task not ready yet ($context), will retry on focus: ${e.message}")
+    } catch (e: Exception) {
+      DebugLog.errorProduction("MainActivity", "Lock task failed ($context): ${e.message}")
     }
   }
 
@@ -342,25 +411,15 @@ class MainActivity : ReactActivity() {
         // Lancer Lock Task sur MainActivity
         // Avec la whitelist, l'utilisateur peut naviguer entre FreeKiosk et l'app externe
         // Mais ne peut PAS sortir vers d'autres apps, launcher, ou paramètres
-        startLockTask()
-        DebugLog.d("MainActivity", "Lock task started (Device Owner) with whitelist: $uniqueWhitelist")
+        tryStartLockTask("Device Owner, whitelist: $uniqueWhitelist")
       } catch (e: SecurityException) {
         DebugLog.errorProduction("MainActivity", "Device Owner lock task failed (admin invalid?): ${e.message}")
         // Fall back to screen pinning
-        try {
-          startLockTask()
-        } catch (e2: Exception) {
-          DebugLog.errorProduction("MainActivity", "Fallback screen pinning also failed: ${e2.message}")
-        }
+        tryStartLockTask("fallback screen pinning")
       }
     } else {
       // Mode non-Device Owner: Screen Pinning manuel (demande confirmation utilisateur)
-      try {
-        startLockTask()
-        DebugLog.d("MainActivity", "Lock task started (Screen Pinning mode - user confirmation required)")
-      } catch (e: Exception) {
-        DebugLog.errorProduction("MainActivity", "Failed to start lock task: ${e.message}")
-      }
+      tryStartLockTask("Screen Pinning mode - user confirmation required")
     }
   }
 
@@ -398,8 +457,20 @@ class MainActivity : ReactActivity() {
           // Android requires HOME feature when NOTIFICATIONS is enabled
           lockTaskFeatures = lockTaskFeatures or DevicePolicyManager.LOCK_TASK_FEATURE_HOME
         }
+
+        // #208 — Keep the system keyguard alive while in lock task so a native Android
+        // screen-lock (PIN/pattern/password) actually prompts after the screen turns off
+        // and back on. Without LOCK_TASK_FEATURE_KEYGUARD, Android DISABLES the keyguard in
+        // LockTask mode, so the configured screen-lock never appears in multi-app/kiosk mode.
+        // Gated on the opt-in "System screen-lock compatibility" setting AND a secure lock
+        // actually being set (same gate as the boot path in BootReceiver).
+        val screenLockCompat = BootReceiver.readScreenLockCompatFlag(this) && BootReceiver.isDeviceSecure(this)
+        if (screenLockCompat) {
+          lockTaskFeatures = lockTaskFeatures or DevicePolicyManager.LOCK_TASK_FEATURE_KEYGUARD
+        }
+
         devicePolicyManager.setLockTaskFeatures(adminComponent, lockTaskFeatures)
-        DebugLog.d("MainActivity", "Lock task features set: blockPowerButton=${!allowPowerButton}, notifications=$allowNotifications, systemInfo=$allowSystemInfo (flags=$lockTaskFeatures)")
+        DebugLog.d("MainActivity", "Lock task features set: blockPowerButton=${!allowPowerButton}, notifications=$allowNotifications, systemInfo=$allowSystemInfo, keyguard=$screenLockCompat (flags=$lockTaskFeatures)")
       }
       
       // Safety net: force unmute audio streams after configuring lock task
@@ -536,19 +607,12 @@ class MainActivity : ReactActivity() {
     // The backup send from handleNavigationIntent (500ms) handles edge cases.
     // No need for a third send here.
 
-    // Notifier React Native qu'on est revenu sur FreeKiosk (depuis une app externe)
-    // NE PAS envoyer si c'est un retour volontaire (l'overlay l'a déjà envoyé)
-    if (isExternalAppMode && !isVoluntaryReturn) {
-      sendAppReturnedEvent(false)  // voluntary=false = auto-relaunch possible
-    }
-
     val kioskEnabled = isKioskEnabled()
 
     // Fix #106: In external app mode, on involuntary returns, do NOT re-enter
     // startLockTask on MainActivity (which would pin FreeKiosk). Instead, immediately
     // relaunch the external app from the native layer to minimize the flash.
     if (isExternalAppMode && !isVoluntaryReturn && kioskEnabled) {
-      isVoluntaryReturn = false
       // Relaunch the external app directly if possible
       val targetPkg = externalAppPackage
       if (targetPkg != null) {
@@ -563,12 +627,25 @@ class MainActivity : ReactActivity() {
             startActivity(launchIntent)
             // Move FreeKiosk to background so external app stays visible
             Handler(Looper.getMainLooper()).postDelayed({ moveTaskToBack(true) }, 300)
+            // #203 — Deliberately NOT sending onAppReturned on this path: JS answers
+            // that event with stopOverlayService(), and since FreeKiosk goes straight
+            // back to the background its JS timers freeze — the pending stop then fires
+            // on the NEXT foreground pass (e.g. returning from Settings) and kills the
+            // OverlayService that was just restarted, leaving the 5-tap escape dead.
+            isVoluntaryReturn = false
             return
           }
         } catch (e: Exception) {
           DebugLog.errorProduction("MainActivity", "Failed to relaunch external app: ${e.message}")
         }
       }
+    }
+
+    // Notifier React Native qu'on est revenu sur FreeKiosk (depuis une app externe)
+    // NE PAS envoyer si c'est un retour volontaire (l'overlay l'a déjà envoyé),
+    // ni si le fast-path ci-dessus a relancé l'app externe directement (#203)
+    if (isExternalAppMode && !isVoluntaryReturn) {
+      sendAppReturnedEvent(false)  // voluntary=false = auto-relaunch possible
     }
     isVoluntaryReturn = false  // Reset pour le prochain resume
 
@@ -689,6 +766,13 @@ class MainActivity : ReactActivity() {
       // Cancel any pending hideSystemUI to avoid fighting with the system window
       hideSystemUIHandler.removeCallbacksAndMessages(null)
     } else {
+      // Retry a lock task that was deferred because the task wasn't in the foreground
+      // when checkAndStartLockTask() ran in onCreate(). Window focus gained is the most
+      // reliable signal that the activity is now truly foregrounded.
+      if (lockTaskPending) {
+        tryStartLockTask("onWindowFocusChanged retry")
+      }
+
       // If a print dialog was active, reset the flag now that focus has returned
       if (PrintModule.isPrintActive) {
         DebugLog.d("MainActivity", "Print dialog closed — resetting isPrintActive, deferring immersive mode")
@@ -1176,8 +1260,22 @@ class MainActivity : ReactActivity() {
     val configJson = intent.getStringExtra("config") // Full JSON config
     val mqttBroker = intent.getStringExtra("mqtt_broker_url")
 
-    // Skip if no config parameters
-    if (lockPackage == null && url == null && configJson == null && mqttBroker == null) return false
+    // Skip if no config parameters.
+    // Treat the intent as an ADB config command if ANY recognized extra is present — not
+    // just the "content" keys (lock_package / url / config / mqtt_broker_url). Previously an
+    // intent that set only e.g. REST API or MQTT options (plus the required pin) bailed out
+    // here and was silently ignored (#193). Keep this list in sync with the extras read below.
+    val adbConfigKeys = arrayOf(
+      "lock_package", "url", "pin", "config",
+      "kiosk_enabled", "auto_launch", "auto_start", "screensaver_enabled", "auto_relaunch",
+      "test_mode", "back_button_mode", "status_bar", "pin_mode",
+      "rest_api_enabled", "rest_api_port", "rest_api_key",
+      "mqtt_enabled", "mqtt_broker_url", "mqtt_port", "mqtt_username", "mqtt_password",
+      "mqtt_client_id", "mqtt_base_topic", "mqtt_discovery_prefix", "mqtt_status_interval",
+      "mqtt_allow_control", "mqtt_device_name",
+      "external_app_mode", "managed_apps"
+    )
+    if (adbConfigKeys.none { intent.hasExtra(it) }) return false
     
     android.util.Log.i("FreeKiosk-ADB", "ADB config received: lock_package=$lockPackage, url=$url, config=${configJson != null}")
     
