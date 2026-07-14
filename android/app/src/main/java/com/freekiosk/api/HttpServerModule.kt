@@ -43,6 +43,7 @@ import android.os.Build
 import com.freekiosk.DeviceAdminReceiver
 import com.freekiosk.CameraPhotoModule
 import com.freekiosk.FreeKioskAccessibilityService
+import com.freekiosk.InstalledAppsInventory
 import com.freekiosk.DeviceOwnerScreenCapture
 import com.freekiosk.ScreenCaptureManager
 import com.freekiosk.ScreenController
@@ -575,7 +576,9 @@ class HttpServerModule(private val reactContext: ReactApplicationContext) :
         // Memory
         val memoryStatus = getMemoryInfo()
         status.put("memory", memoryStatus)
-        
+
+        status.put("installedApps", InstalledAppsInventory.snapshot(reactContext))
+
         return status
     }
 
@@ -1001,6 +1004,14 @@ class HttpServerModule(private val reactContext: ReactApplicationContext) :
                     put("status", result.optString("status"))
                     if (result.has("error")) put("error", result.optString("error"))
                     if (result.has("packageName")) put("packageName", result.optString("packageName"))
+                }
+            }
+            "listInstalledApps" -> {
+                return JSONObject().apply {
+                    put("executed", true)
+                    put("success", true)
+                    put("command", command)
+                    put("installedApps", InstalledAppsInventory.snapshot(reactContext))
                 }
             }
             "reboot" -> {

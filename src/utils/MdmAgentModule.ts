@@ -72,6 +72,9 @@ export interface MdmCatalogApp {
   sha256: string;
   downloadUrl: string;
   installStatus?: string;
+  installedOnDevice?: boolean;
+  deviceVersionName?: string;
+  updateAvailable?: boolean;
 }
 
 export const mdmAgent = new MdmAgentService();

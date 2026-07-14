@@ -111,6 +111,11 @@ class MdmAgentModule(private val reactContext: ReactApplicationContext) :
                         if (!app.isNull("installStatus")) {
                             putString("installStatus", app.optString("installStatus"))
                         }
+                        putBoolean("installedOnDevice", app.optBoolean("installedOnDevice", false))
+                        if (!app.isNull("deviceVersionName")) {
+                            putString("deviceVersionName", app.optString("deviceVersionName"))
+                        }
+                        putBoolean("updateAvailable", app.optBoolean("updateAvailable", false))
                     })
                 }
                 promise.resolve(array)

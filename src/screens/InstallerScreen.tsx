@@ -68,7 +68,7 @@ function statusMeta(status: RowStatus): StatusMeta | null {
       };
     case 'installed':
       return {
-        label: 'On home screen',
+        label: 'On device',
         color: Colors.successDark,
         icon: 'check-circle',
       };
@@ -81,6 +81,15 @@ function statusMeta(status: RowStatus): StatusMeta | null {
     default:
       return null;
   }
+}
+
+function isOnDevice(app: MdmCatalogApp): boolean {
+  if (app.installedOnDevice != null) return app.installedOnDevice;
+  return app.installStatus === 'installed';
+}
+
+function needsInstall(app: MdmCatalogApp): boolean {
+  return !isOnDevice(app) || !!app.updateAvailable;
 }
 
 function isBusyStatus(status: RowStatus) {
@@ -207,7 +216,7 @@ const InstallerScreen: React.FC<InstallerScreenProps> = ({ navigation }) => {
         catalog.forEach((app) => {
           const current = next[app.id];
           if (isBusyStatus(current)) return;
-          if (app.installStatus === 'installed') {
+          if (isOnDevice(app) && !app.updateAvailable) {
             next[app.id] = 'installed';
           } else if (!current) {
             next[app.id] = 'idle';
@@ -218,7 +227,7 @@ const InstallerScreen: React.FC<InstallerScreenProps> = ({ navigation }) => {
       setSelectedIds((prev) => {
         const next = new Set(prev);
         catalog.forEach((app) => {
-          if (app.installStatus === 'installed') {
+          if (isOnDevice(app) && !app.updateAvailable) {
             next.delete(app.id);
           }
         });
@@ -291,7 +300,7 @@ const InstallerScreen: React.FC<InstallerScreenProps> = ({ navigation }) => {
     let failed = 0;
     let inProgress = 0;
     apps.forEach((app) => {
-      const status = rowStatus[app.id] || (app.installStatus === 'installed' ? 'installed' : 'idle');
+      const status = rowStatus[app.id] || (isOnDevice(app) && !app.updateAvailable ? 'installed' : 'idle');
       if (status === 'installed') installed += 1;
       else if (status === 'failed') failed += 1;
       else if (isBusyStatus(status)) inProgress += 1;
@@ -302,14 +311,15 @@ const InstallerScreen: React.FC<InstallerScreenProps> = ({ navigation }) => {
   const headerSubtitle = useMemo(() => {
     if (isLoading) return 'Loading catalog…';
     if (installStats.total > 0) {
-      return `${installStats.installed} of ${installStats.total} on home screen`;
+      return `${installStats.installed} of ${installStats.total} on device`;
     }
     return 'Apps assigned to this device';
   }, [isLoading, installStats]);
 
   const toggleSelection = (appId: number) => {
+    const app = apps.find((entry) => entry.id === appId);
     const status = rowStatus[appId];
-    if (isBusyStatus(status) || status === 'installed') return;
+    if (isBusyStatus(status) || (app && isOnDevice(app) && !app.updateAvailable)) return;
     if (isInstalling && status !== 'failed') return;
     setSelectedIds((prev) => {
       const next = new Set(prev);
@@ -363,10 +373,11 @@ const InstallerScreen: React.FC<InstallerScreenProps> = ({ navigation }) => {
 
   const renderItem = ({ item }: { item: MdmCatalogApp }) => {
     const selected = selectedIds.has(item.id);
-    const status = rowStatus[item.id] || (item.installStatus === 'installed' ? 'installed' : 'idle');
+    const status = rowStatus[item.id] || (isOnDevice(item) && !item.updateAvailable ? 'installed' : 'idle');
     const meta = statusMeta(status);
     const busy = isBusyStatus(status);
-    const disableSelect = busy || status === 'installed' || (isInstalling && status !== 'failed');
+    const showUpdate = isOnDevice(item) && item.updateAvailable && !busy && status !== 'failed';
+    const disableSelect = busy || (isOnDevice(item) && !item.updateAvailable) || (isInstalling && status !== 'failed');
 
     return (
       <TouchableOpacity
@@ -384,9 +395,14 @@ const InstallerScreen: React.FC<InstallerScreenProps> = ({ navigation }) => {
           <Text style={styles.rowTitle}>{item.name}</Text>
           <Text style={styles.rowMeta}>{item.packageName}</Text>
           <Text style={styles.rowMeta}>
-            {item.versionName || 'Unknown version'} · {formatBytes(item.fileSizeBytes)}
+            {item.deviceVersionName || item.versionName || 'Unknown version'} · {formatBytes(item.fileSizeBytes)}
           </Text>
-          {meta ? (
+          {showUpdate ? (
+            <View style={styles.statusLine}>
+              <Icon name="alert-circle" size={14} color={Colors.warningDark} />
+              <Text style={[styles.statusText, { color: Colors.warningDark }]}>Update available</Text>
+            </View>
+          ) : meta ? (
             <View style={styles.statusLine}>
               {meta.icon ? (
                 <Icon name={meta.icon} size={14} color={meta.color} />
