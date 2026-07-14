@@ -12,7 +12,7 @@ import {
   BackupRestoreSection,
 } from '../../../components/settings';
 import { ApiSettingsSection } from '../../../components/ApiSettingsSection';
-import { MqttSettingsSection } from '../../../components/MqttSettingsSection';
+// import { MqttSettingsSection } from '../../../components/MqttSettingsSection';
 import { CertificateInfo } from '../../../utils/CertificateModule';
 import AccessibilityModule from '../../../utils/AccessibilityModule';
 import { Colors, Spacing, Typography } from '../../../theme';
@@ -230,8 +230,8 @@ const AdvancedTab: React.FC<AdvancedTabProps> = ({
       {/* REST API - Home Assistant Integration */}
       <ApiSettingsSection />
 
-      {/* MQTT - Home Assistant Integration */}
-      <MqttSettingsSection />
+      {/* MQTT - Home Assistant Integration (hidden) */}
+      {/* <MqttSettingsSection /> */}
 
       {/* Accessibility Service - Hidden in Play Store builds (BIND_ACCESSIBILITY_SERVICE policy) */}
       {enableSelfUpdate && (
