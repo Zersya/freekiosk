@@ -137,6 +137,63 @@ class MdmAgentModule(private val reactContext: ReactApplicationContext) :
         }.start()
     }
 
+    @ReactMethod
+    fun listConfigBackups(promise: Promise) {
+        Thread {
+            try {
+                val result = MdmConfigBackupClient.listConfigBackups(reactContext)
+                val ownDeviceId = MdmAgentPrefs.getDeviceId(reactContext).orEmpty()
+                val map = Arguments.createMap().apply {
+                    putArray("groups", MdmConfigBackupClient.groupsToArray(result.optJSONArray("groups")))
+                    putArray("backups", MdmConfigBackupClient.backupsToArray(result.optJSONArray("backups"), ownDeviceId))
+                }
+                promise.resolve(map)
+            } catch (e: Exception) {
+                promise.reject("LIST_CONFIG_BACKUPS_ERROR", e.message, e)
+            }
+        }.start()
+    }
+
+    @ReactMethod
+    fun uploadConfigBackup(backupJson: String, label: String?, promise: Promise) {
+        Thread {
+            try {
+                val result = MdmConfigBackupClient.uploadConfigBackup(reactContext, backupJson, label)
+                val backup = result.optJSONObject("backup")
+                val map = Arguments.createMap().apply {
+                    if (backup != null) {
+                        putString("id", backup.optString("id"))
+                        putString("deviceId", backup.optString("deviceId"))
+                        if (!backup.isNull("label")) {
+                            putString("label", backup.optString("label"))
+                        }
+                        putInt("settingsCount", backup.optInt("settingsCount"))
+                        putString("createdAt", backup.optString("createdAt"))
+                    }
+                }
+                promise.resolve(map)
+            } catch (e: Exception) {
+                promise.reject("UPLOAD_CONFIG_BACKUP_ERROR", e.message, e)
+            }
+        }.start()
+    }
+
+    @ReactMethod
+    fun fetchConfigBackup(backupId: String, promise: Promise) {
+        Thread {
+            try {
+                val result = MdmConfigBackupClient.fetchConfigBackup(reactContext, backupId)
+                val content = result.optJSONObject("content")
+                val map = Arguments.createMap().apply {
+                    putString("contentJson", content?.toString() ?: "{}")
+                }
+                promise.resolve(map)
+            } catch (e: Exception) {
+                promise.reject("FETCH_CONFIG_BACKUP_ERROR", e.message, e)
+            }
+        }.start()
+    }
+
     private fun kioskUpdateToMap(json: org.json.JSONObject): WritableMap {
         return Arguments.createMap().apply {
             putString("packageName", json.optString("packageName"))

@@ -27,6 +27,31 @@ export interface MdmKioskUpdateInfo {
   latest?: MdmKioskUpdateLatest | null;
 }
 
+export interface MdmConfigBackupSummary {
+  id: string;
+  deviceId: string;
+  deviceName: string;
+  label?: string | null;
+  appVersion?: string | null;
+  exportDate?: string | null;
+  settingsCount: number;
+  hasPinConfigured: boolean;
+  createdAt: string;
+  groupNames: string[];
+  isOwnDevice: boolean;
+}
+
+export interface MdmConfigBackupGroup {
+  id: string;
+  name: string;
+  color?: string | null;
+}
+
+export interface MdmConfigBackupListResponse {
+  groups: MdmConfigBackupGroup[];
+  backups: MdmConfigBackupSummary[];
+}
+
 export interface MdmCatalogApp {
   id: number;
   name: string;
@@ -100,6 +125,29 @@ class MdmAgentService {
       throw new Error('MdmAgentModule is only available on Android');
     }
     return MdmAgentModule.fetchKioskUpdate();
+  }
+
+  async listConfigBackups(): Promise<MdmConfigBackupListResponse> {
+    if (Platform.OS !== 'android' || !MdmAgentModule) {
+      return { groups: [], backups: [] };
+    }
+    return MdmAgentModule.listConfigBackups();
+  }
+
+  async uploadConfigBackup(backupJson: string, label?: string | null): Promise<{ id: string }> {
+    if (Platform.OS !== 'android' || !MdmAgentModule) {
+      throw new Error('MdmAgentModule is only available on Android');
+    }
+    const result = await MdmAgentModule.uploadConfigBackup(backupJson, label ?? null);
+    return { id: result.id };
+  }
+
+  async fetchConfigBackupContent(backupId: string): Promise<string> {
+    if (Platform.OS !== 'android' || !MdmAgentModule) {
+      throw new Error('MdmAgentModule is only available on Android');
+    }
+    const result = await MdmAgentModule.fetchConfigBackup(backupId);
+    return result.contentJson;
   }
 }
 

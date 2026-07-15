@@ -28,6 +28,7 @@ import {
   BackupData,
 } from '../../utils/BackupService';
 import FilePickerModule from '../../utils/FilePickerModule';
+import { mdmAgent, type MdmConfigBackupSummary } from '../../utils/MdmAgentModule';
 
 interface BackupFile {
   name: string;
@@ -51,6 +52,143 @@ const BackupRestoreSection: React.FC<BackupRestoreSectionProps> = ({
   const [isRestoring, setIsRestoring] = useState(false);
   const [browsedContent, setBrowsedContent] = useState<string | null>(null);
   const [browsedFileName, setBrowsedFileName] = useState<string | null>(null);
+
+  const [mdmEnrolled, setMdmEnrolled] = useState(false);
+  const [isUploadingMdm, setIsUploadingMdm] = useState(false);
+  const [showMdmRestoreModal, setShowMdmRestoreModal] = useState(false);
+  const [mdmBackups, setMdmBackups] = useState<MdmConfigBackupSummary[]>([]);
+  const [mdmGroups, setMdmGroups] = useState<Array<{ id: string; name: string }>>([]);
+  const [loadingMdmBackups, setLoadingMdmBackups] = useState(false);
+  const [mdmFilter, setMdmFilter] = useState<'all' | 'own' | 'group'>('all');
+  const [selectedMdmBackup, setSelectedMdmBackup] = useState<MdmConfigBackupSummary | null>(null);
+  const [mdmBackupPreview, setMdmBackupPreview] = useState<BackupData | null>(null);
+  const [isRestoringMdm, setIsRestoringMdm] = useState(false);
+
+  useEffect(() => {
+    if (Platform.OS !== 'android') return;
+    mdmAgent.getAgentInfo().then((info) => {
+      setMdmEnrolled(Boolean(info.enrolled && info.deviceId));
+    }).catch(() => {
+      setMdmEnrolled(false);
+    });
+  }, []);
+
+  const filteredMdmBackups = mdmBackups.filter((backup) => {
+    if (mdmFilter === 'own') return backup.isOwnDevice;
+    if (mdmFilter === 'group') return !backup.isOwnDevice;
+    return true;
+  });
+
+  const loadMdmBackups = async () => {
+    setLoadingMdmBackups(true);
+    try {
+      const result = await mdmAgent.listConfigBackups();
+      setMdmBackups(result.backups || []);
+      setMdmGroups(result.groups || []);
+    } catch (error) {
+      console.error('Error loading MDM backups:', error);
+      Alert.alert('MDM Error', 'Could not load backups from MDM. Check enrollment and connection.');
+    } finally {
+      setLoadingMdmBackups(false);
+    }
+  };
+
+  const handleUploadToMdm = async () => {
+    setIsUploadingMdm(true);
+    try {
+      const built = await buildBackupJson();
+      if (!built.success || !built.json) {
+        Alert.alert('Upload Failed', built.error || 'Failed to prepare backup data');
+        return;
+      }
+
+      await mdmAgent.uploadConfigBackup(built.json);
+      Alert.alert('Uploaded to MDM', 'Configuration backup saved on the MDM server.', [{ text: 'OK' }]);
+    } catch (error: any) {
+      Alert.alert('Upload Failed', error?.message || String(error));
+    } finally {
+      setIsUploadingMdm(false);
+    }
+  };
+
+  const handleOpenMdmRestoreModal = async () => {
+    setShowMdmRestoreModal(true);
+    setSelectedMdmBackup(null);
+    setMdmBackupPreview(null);
+    setMdmFilter('all');
+    await loadMdmBackups();
+  };
+
+  const handleSelectMdmBackup = async (backup: MdmConfigBackupSummary) => {
+    setSelectedMdmBackup(backup);
+    setMdmBackupPreview(null);
+    try {
+      const contentJson = await mdmAgent.fetchConfigBackupContent(backup.id);
+      const parsed = parseBackupContent(contentJson);
+      if (parsed.success && parsed.data) {
+        setMdmBackupPreview(parsed.data);
+      }
+    } catch (error: any) {
+      Alert.alert('Error', error?.message || 'Failed to load backup from MDM');
+    }
+  };
+
+  const handleRestoreMdmBackup = async () => {
+    if (!selectedMdmBackup) return;
+
+    const sourceLabel = selectedMdmBackup.isOwnDevice
+      ? 'your device'
+      : `${selectedMdmBackup.deviceName}${selectedMdmBackup.groupNames.length ? ` (${selectedMdmBackup.groupNames.join(', ')})` : ''}`;
+
+    Alert.alert(
+      'Restore from MDM',
+      `Replace current settings with the backup from ${sourceLabel}?`,
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Restore',
+          style: 'destructive',
+          onPress: async () => {
+            setIsRestoringMdm(true);
+            try {
+              const contentJson = await mdmAgent.fetchConfigBackupContent(selectedMdmBackup.id);
+              const result = await importBackupFromContent(contentJson);
+              if (result.success) {
+                let message = 'Configuration restored from MDM.';
+                if (result.warning) {
+                  message += `\n\n${result.warning}`;
+                }
+                message += '\n\nRestart the app for all changes to take effect.';
+                Alert.alert('Restore Complete', message, [
+                  {
+                    text: 'OK',
+                    onPress: () => {
+                      setShowMdmRestoreModal(false);
+                      setSelectedMdmBackup(null);
+                      setMdmBackupPreview(null);
+                      onRestoreComplete?.();
+                    },
+                  },
+                ]);
+              } else {
+                Alert.alert('Restore Failed', result.error || 'Unknown error');
+              }
+            } catch (error: any) {
+              Alert.alert('Restore Failed', error?.message || String(error));
+            } finally {
+              setIsRestoringMdm(false);
+            }
+          },
+        },
+      ],
+    );
+  };
+
+  const getMdmBackupTitle = (backup: MdmConfigBackupSummary): string => {
+    if (backup.label) return backup.label;
+    if (backup.isOwnDevice) return 'This device';
+    return backup.deviceName;
+  };
 
   const loadBackupFiles = async () => {
     setLoadingFiles(true);
@@ -327,6 +465,46 @@ const BackupRestoreSection: React.FC<BackupRestoreSectionProps> = ({
         PIN codes are not included in backups for security.
       </Text>
 
+      {mdmEnrolled && (
+        <View style={styles.mdmSection}>
+          <Text style={styles.mdmSectionTitle}>MDM cloud backup</Text>
+          <Text style={styles.mdmSectionHint}>
+            Upload to MDM or restore configs shared within your store group.
+          </Text>
+          <View style={styles.buttonRow}>
+            <TouchableOpacity
+              style={[styles.actionButton, styles.exportButton]}
+              onPress={handleUploadToMdm}
+              disabled={isUploadingMdm}
+            >
+              {isUploadingMdm ? (
+                <ActivityIndicator size="small" color={Colors.textOnPrimary} />
+              ) : (
+                <>
+                  <Icon name="upload" size={18} color={Colors.textOnPrimary} />
+                  <Text style={styles.actionButtonText}>Upload to MDM</Text>
+                </>
+              )}
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              style={[styles.actionButton, styles.importButton]}
+              onPress={handleOpenMdmRestoreModal}
+            >
+              <Icon name="download" size={18} color={Colors.primary} />
+              <Text style={styles.importButtonText}>Restore from MDM</Text>
+            </TouchableOpacity>
+          </View>
+          {mdmGroups.length > 0 && (
+            <Text style={styles.mdmGroupsHint}>
+              Groups: {mdmGroups.map(group => group.name).join(', ')}
+            </Text>
+          )}
+        </View>
+      )}
+
+      <Text style={styles.localSectionTitle}>Local backup</Text>
+
       <View style={styles.buttonRow}>
         <TouchableOpacity
           style={[styles.actionButton, styles.exportButton]}
@@ -493,6 +671,149 @@ const BackupRestoreSection: React.FC<BackupRestoreSectionProps> = ({
           </View>
         </View>
       </Modal>
+
+      {/* MDM Restore Modal */}
+      <Modal
+        visible={showMdmRestoreModal}
+        animationType="slide"
+        onRequestClose={() => setShowMdmRestoreModal(false)}
+      >
+        <View style={styles.modalContainer}>
+          <View style={styles.modalHeader}>
+            <Text style={styles.modalTitle}>Restore from MDM</Text>
+            <TouchableOpacity
+              style={styles.modalCloseButton}
+              onPress={() => {
+                setShowMdmRestoreModal(false);
+                setSelectedMdmBackup(null);
+                setMdmBackupPreview(null);
+              }}
+            >
+              <Text style={styles.modalCloseButtonText}>✕</Text>
+            </TouchableOpacity>
+          </View>
+
+          <View style={styles.modalContent}>
+            <View style={styles.mdmFilterRow}>
+              {(['all', 'own', 'group'] as const).map((filter) => (
+                <TouchableOpacity
+                  key={filter}
+                  style={[styles.mdmFilterChip, mdmFilter === filter && styles.mdmFilterChipActive]}
+                  onPress={() => setMdmFilter(filter)}
+                >
+                  <Text style={[styles.mdmFilterChipText, mdmFilter === filter && styles.mdmFilterChipTextActive]}>
+                    {filter === 'all' ? 'All' : filter === 'own' ? 'This device' : 'Group'}
+                  </Text>
+                </TouchableOpacity>
+              ))}
+            </View>
+
+            <View style={styles.listSection}>
+              {loadingMdmBackups ? (
+                <View style={styles.loadingContainer}>
+                  <ActivityIndicator size="large" color={Colors.primary} />
+                  <Text style={styles.loadingText}>Loading MDM backups...</Text>
+                </View>
+              ) : filteredMdmBackups.length === 0 ? (
+                <View style={styles.emptyContainer}>
+                  <Icon name="server-network" size={48} color={Colors.textHint} />
+                  <Text style={styles.emptyText}>No MDM backups found</Text>
+                  <Text style={styles.emptySubtext}>
+                    Upload a backup from this device, or ask a teammate in your group to upload theirs.
+                  </Text>
+                </View>
+              ) : (
+                <FlatList
+                  data={filteredMdmBackups}
+                  keyExtractor={(item) => item.id}
+                  renderItem={({ item }) => {
+                    const isSelected = selectedMdmBackup?.id === item.id;
+                    return (
+                      <TouchableOpacity
+                        style={[styles.backupItem, isSelected && styles.backupItemSelected]}
+                        onPress={() => handleSelectMdmBackup(item)}
+                      >
+                        <View style={styles.backupItemContent}>
+                          <Icon
+                            name={item.isOwnDevice ? 'cellphone' : 'view-grid'}
+                            size={24}
+                            color={isSelected ? Colors.primary : Colors.textSecondary}
+                          />
+                          <View style={styles.backupItemInfo}>
+                            <Text
+                              style={[styles.backupItemName, isSelected && styles.backupItemNameSelected]}
+                              numberOfLines={1}
+                            >
+                              {getMdmBackupTitle(item)}
+                            </Text>
+                            <Text style={styles.backupItemDate}>
+                              {formatDate(item.exportDate || item.createdAt)}
+                              {item.groupNames.length > 0 ? ` · ${item.groupNames.join(', ')}` : ''}
+                            </Text>
+                            <Text style={styles.mdmBackupMeta}>
+                              {item.settingsCount} settings{item.isOwnDevice ? '' : ` · ${item.deviceName}`}
+                            </Text>
+                          </View>
+                        </View>
+                      </TouchableOpacity>
+                    );
+                  }}
+                  style={styles.backupList}
+                  contentContainerStyle={styles.backupListContent}
+                />
+              )}
+            </View>
+
+            {selectedMdmBackup && (
+              <View style={styles.previewSection}>
+                <Text style={styles.sectionTitle}>Backup Details</Text>
+                <View style={styles.previewCard}>
+                  {mdmBackupPreview ? (
+                    <>
+                      <View style={styles.previewRow}>
+                        <Text style={styles.previewLabel}>Source:</Text>
+                        <Text style={styles.previewValue}>{getMdmBackupTitle(selectedMdmBackup)}</Text>
+                      </View>
+                      <View style={styles.previewRow}>
+                        <Text style={styles.previewLabel}>App Version:</Text>
+                        <Text style={styles.previewValue}>{mdmBackupPreview.appVersion || 'Unknown'}</Text>
+                      </View>
+                      <View style={styles.previewRow}>
+                        <Text style={styles.previewLabel}>Export Date:</Text>
+                        <Text style={styles.previewValue}>{formatDate(mdmBackupPreview.exportDate)}</Text>
+                      </View>
+                      <View style={styles.previewRow}>
+                        <Text style={styles.previewLabel}>Settings Count:</Text>
+                        <Text style={styles.previewValue}>{getSettingsCount(mdmBackupPreview)}</Text>
+                      </View>
+                    </>
+                  ) : (
+                    <ActivityIndicator size="small" color={Colors.primary} />
+                  )}
+                </View>
+
+                <TouchableOpacity
+                  style={[
+                    styles.restoreButton,
+                    (!mdmBackupPreview || isRestoringMdm) && styles.restoreButtonDisabled,
+                  ]}
+                  onPress={handleRestoreMdmBackup}
+                  disabled={!mdmBackupPreview || isRestoringMdm}
+                >
+                  {isRestoringMdm ? (
+                    <ActivityIndicator size="small" color={Colors.textOnPrimary} />
+                  ) : (
+                    <>
+                      <Icon name="refresh" size={18} color={Colors.textOnPrimary} />
+                      <Text style={styles.restoreButtonText}>Restore This Backup</Text>
+                    </>
+                  )}
+                </TouchableOpacity>
+              </View>
+            )}
+          </View>
+        </View>
+      </Modal>
     </View>
   );
 };
@@ -518,6 +839,66 @@ const styles = StyleSheet.create({
     ...Typography.hint,
     color: Colors.textSecondary,
     marginBottom: Spacing.md,
+  },
+  mdmSection: {
+    marginBottom: Spacing.md,
+    paddingBottom: Spacing.md,
+    borderBottomWidth: 1,
+    borderBottomColor: Colors.divider,
+  },
+  mdmSectionTitle: {
+    ...Typography.label,
+    color: Colors.textPrimary,
+    marginBottom: Spacing.xs,
+  },
+  mdmSectionHint: {
+    ...Typography.hint,
+    color: Colors.textSecondary,
+    marginBottom: Spacing.sm,
+  },
+  mdmGroupsHint: {
+    ...Typography.hint,
+    color: Colors.textHint,
+    marginTop: Spacing.sm,
+  },
+  localSectionTitle: {
+    ...Typography.labelSmall,
+    color: Colors.textSecondary,
+    marginBottom: Spacing.sm,
+    textTransform: 'uppercase',
+    letterSpacing: 0.5,
+  },
+  mdmFilterRow: {
+    flexDirection: 'row',
+    gap: Spacing.xs,
+    marginBottom: Spacing.md,
+  },
+  mdmFilterChip: {
+    paddingVertical: Spacing.xs,
+    paddingHorizontal: Spacing.sm,
+    borderRadius: 16,
+    borderWidth: 1,
+    borderColor: Colors.border,
+    backgroundColor: Colors.surface,
+  },
+  mdmFilterChipActive: {
+    borderColor: Colors.primary,
+    backgroundColor: Colors.primaryLight,
+  },
+  mdmFilterChipText: {
+    ...Typography.body,
+    color: Colors.textSecondary,
+    fontSize: 13,
+  },
+  mdmFilterChipTextActive: {
+    color: Colors.primary,
+    fontWeight: '600',
+  },
+  mdmBackupMeta: {
+    ...Typography.hint,
+    color: Colors.textHint,
+    marginTop: 2,
+    fontSize: 11,
   },
   buttonRow: {
     flexDirection: 'row',
