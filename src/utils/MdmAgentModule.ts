@@ -4,7 +4,7 @@ export interface MdmAgentInfo {
   enabled: boolean;
   connected: boolean;
   wsUrl?: string;
-  deviceId: number;
+  deviceId?: string | null;
   enrolled: boolean;
 }
 
@@ -76,7 +76,7 @@ class MdmAgentService {
 
   async getAgentInfo(): Promise<MdmAgentInfo> {
     if (Platform.OS !== 'android' || !MdmAgentModule) {
-      return { enabled: false, connected: false, deviceId: 0, enrolled: false };
+      return { enabled: false, connected: false, deviceId: null, enrolled: false };
     }
     return MdmAgentModule.getAgentInfo();
   }

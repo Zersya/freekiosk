@@ -35,11 +35,11 @@ object MdmAgentPrefs {
         prefs(context).edit().putString(KEY_ENROLLMENT_TOKEN, token?.trim()).apply()
     }
 
-    fun getDeviceId(context: Context): Int =
-        prefs(context).getInt(KEY_DEVICE_ID, 0)
+    fun getDeviceId(context: Context): String? =
+        prefs(context).getString(KEY_DEVICE_ID, null)?.takeIf { it.isNotBlank() }
 
-    fun setDeviceId(context: Context, deviceId: Int) {
-        prefs(context).edit().putInt(KEY_DEVICE_ID, deviceId).apply()
+    fun setDeviceId(context: Context, deviceId: String) {
+        prefs(context).edit().putString(KEY_DEVICE_ID, deviceId.trim()).apply()
     }
 
     fun getAgentToken(context: Context): String? =
@@ -56,9 +56,12 @@ object MdmAgentPrefs {
         prefs(context).edit().putString(KEY_DEVICE_KEY, deviceKey).apply()
     }
 
-    fun saveEnrollmentResult(context: Context, deviceId: Int, agentToken: String) {
+    fun isEnrolled(context: Context): Boolean =
+        !getDeviceId(context).isNullOrBlank() && !getAgentToken(context).isNullOrBlank()
+
+    fun saveEnrollmentResult(context: Context, deviceId: String, agentToken: String) {
         prefs(context).edit()
-            .putInt(KEY_DEVICE_ID, deviceId)
+            .putString(KEY_DEVICE_ID, deviceId.trim())
             .putString(KEY_AGENT_TOKEN, agentToken)
             .remove(KEY_ENROLLMENT_TOKEN)
             .apply()

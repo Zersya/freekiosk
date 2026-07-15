@@ -22,7 +22,7 @@ object MdmInstallReporter {
         val agentToken = MdmAgentPrefs.getAgentToken(context)
         val baseUrl = MdmAppsClient.getRestBaseUrl(context)
 
-        if (deviceId <= 0 || agentToken.isNullOrBlank() || baseUrl.isNullOrBlank()) {
+        if (deviceId.isNullOrBlank() || agentToken.isNullOrBlank() || baseUrl.isNullOrBlank()) {
             return
         }
 
@@ -77,7 +77,7 @@ object MdmAppsClient {
         val agentToken = MdmAgentPrefs.getAgentToken(context)
         val baseUrl = getRestBaseUrl(context)
 
-        if (deviceId <= 0 || agentToken.isNullOrBlank() || baseUrl.isNullOrBlank()) {
+        if (deviceId.isNullOrBlank() || agentToken.isNullOrBlank() || baseUrl.isNullOrBlank()) {
             throw IllegalStateException("MDM agent is not enrolled")
         }
 

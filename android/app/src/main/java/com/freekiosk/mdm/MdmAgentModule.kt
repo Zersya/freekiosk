@@ -70,8 +70,8 @@ class MdmAgentModule(private val reactContext: ReactApplicationContext) :
             putBoolean("enabled", MdmAgentPrefs.isEnabled(reactContext))
             putBoolean("connected", MdmAgentService.isConnected())
             putString("wsUrl", MdmAgentPrefs.getWsUrl(reactContext))
-            putInt("deviceId", MdmAgentPrefs.getDeviceId(reactContext))
-            putBoolean("enrolled", MdmAgentPrefs.getDeviceId(reactContext) > 0 && !MdmAgentPrefs.getAgentToken(reactContext).isNullOrBlank())
+            putString("deviceId", MdmAgentPrefs.getDeviceId(reactContext))
+            putBoolean("enrolled", MdmAgentPrefs.isEnrolled(reactContext))
         }
         promise.resolve(map)
     }

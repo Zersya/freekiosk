@@ -235,7 +235,7 @@ class MdmAgentClient(private val context: Context) {
                     put("androidVersion", Build.VERSION.RELEASE)
                 })
             }
-        } else if (deviceId > 0 && !agentToken.isNullOrBlank()) {
+        } else if (!deviceId.isNullOrBlank() && !agentToken.isNullOrBlank()) {
             JSONObject().apply {
                 put("type", "hello")
                 put("deviceId", deviceId)
@@ -260,9 +260,9 @@ class MdmAgentClient(private val context: Context) {
             val message = JSONObject(text)
             when (message.optString("type")) {
                 "enrolled" -> {
-                    val deviceId = message.optInt("deviceId", 0)
+                    val deviceId = message.optString("deviceId", "").trim()
                     val agentToken = message.optString("agentToken", "")
-                    if (deviceId <= 0 || agentToken.isBlank()) {
+                    if (deviceId.isBlank() || agentToken.isBlank()) {
                         onError?.invoke("Invalid enroll response")
                         return
                     }

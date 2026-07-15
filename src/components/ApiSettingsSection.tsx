@@ -50,7 +50,7 @@ export const ApiSettingsSection: React.FC<ApiSettingsSectionProps> = ({
   const [mdmWsUrl, setMdmWsUrl] = useState('');
   const [mdmEnrollToken, setMdmEnrollToken] = useState('');
   const [mdmConnected, setMdmConnected] = useState(false);
-  const [mdmDeviceId, setMdmDeviceId] = useState(0);
+  const [mdmDeviceId, setMdmDeviceId] = useState('');
   const [mdmEnrolled, setMdmEnrolled] = useState(false);
   const [mdmLoading, setMdmLoading] = useState(false);
   const [isDeviceOwner, setIsDeviceOwner] = useState(false);
@@ -77,7 +77,7 @@ export const ApiSettingsSection: React.FC<ApiSettingsSectionProps> = ({
         setMdmEnabled(info.enabled);
         setMdmWsUrl(info.wsUrl || '');
         setMdmConnected(info.connected);
-        setMdmDeviceId(info.deviceId);
+        setMdmDeviceId(info.deviceId || '');
         setMdmEnrolled(info.enrolled);
       }
     };
@@ -378,7 +378,7 @@ export const ApiSettingsSection: React.FC<ApiSettingsSectionProps> = ({
     const info = await mdmAgent.getAgentInfo();
     setMdmEnabled(info.enabled);
     setMdmConnected(info.connected);
-    setMdmDeviceId(info.deviceId);
+    setMdmDeviceId(info.deviceId || '');
     setMdmEnrolled(info.enrolled);
   };
 
@@ -398,7 +398,7 @@ export const ApiSettingsSection: React.FC<ApiSettingsSectionProps> = ({
               setMdmEnrollToken('');
               setMdmEnabled(false);
               setMdmConnected(false);
-              setMdmDeviceId(0);
+              setMdmDeviceId('');
               setMdmEnrolled(false);
               await refreshMdmAgentInfo();
               onSettingsChanged?.();
@@ -620,7 +620,7 @@ export const ApiSettingsSection: React.FC<ApiSettingsSectionProps> = ({
               {mdmLoading
                 ? 'Updating…'
                 : mdmConnected
-                  ? `Connected${mdmDeviceId > 0 ? ` (device #${mdmDeviceId})` : ''}`
+                  ? `Connected${mdmDeviceId ? ` (${mdmDeviceId.slice(0, 8)}…)` : ''}`
                   : mdmEnabled
                     ? (mdmEnrolled
                       ? 'Reconnecting…'
@@ -631,7 +631,7 @@ export const ApiSettingsSection: React.FC<ApiSettingsSectionProps> = ({
           </View>
           {mdmEnrolled && (
             <Text style={styles.mdmEnrolledText}>
-              Enrolled as device #{mdmDeviceId}. Re-enroll after server migration or token rotation.
+              Enrolled as device {mdmDeviceId}. Re-enroll after server migration or token rotation.
             </Text>
           )}
         </View>
