@@ -1017,6 +1017,28 @@ class HttpServerModule(private val reactContext: ReactApplicationContext) :
                     put("installedApps", InstalledAppsInventory.snapshot(reactContext))
                 }
             }
+            "backupConfig" -> {
+                val label = params?.optString("label", null)?.takeIf { it.isNotBlank() }
+                val result = com.freekiosk.mdm.MdmBackupCommandBridge.runBackup(label, 90_000L)
+                return JSONObject().apply {
+                    put("executed", result.optBoolean("executed", false))
+                    put("success", result.optBoolean("success", false))
+                    put("command", command)
+                    if (result.has("data")) put("data", result.getJSONObject("data"))
+                    if (result.has("error")) put("error", result.optString("error"))
+                }
+            }
+            "restoreConfig" -> {
+                val backupId = params?.optString("backupId", "") ?: ""
+                val result = com.freekiosk.mdm.MdmBackupCommandBridge.runRestore(backupId, 90_000L)
+                return JSONObject().apply {
+                    put("executed", result.optBoolean("executed", false))
+                    put("success", result.optBoolean("success", false))
+                    put("command", command)
+                    if (result.has("data")) put("data", result.getJSONObject("data"))
+                    if (result.has("error")) put("error", result.optString("error"))
+                }
+            }
             "reboot" -> {
                 return try {
                     val dpm = reactContext.getSystemService(Context.DEVICE_POLICY_SERVICE) as android.app.admin.DevicePolicyManager

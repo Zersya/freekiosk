@@ -14,6 +14,33 @@ class MdmAgentModule(private val reactContext: ReactApplicationContext) :
 
     override fun getName(): String = NAME
 
+    override fun initialize() {
+        super.initialize()
+        MdmBackupCommandBridge.attach(reactContext)
+    }
+
+    override fun invalidate() {
+        MdmBackupCommandBridge.detach()
+        super.invalidate()
+    }
+
+    @ReactMethod
+    fun resolveMdmConfigCommand(
+        requestId: String,
+        success: Boolean,
+        dataJson: String?,
+        error: String?,
+        promise: Promise,
+    ) {
+        try {
+            val data = if (dataJson.isNullOrBlank()) null else org.json.JSONObject(dataJson)
+            MdmBackupCommandBridge.resolve(requestId, success, data, error)
+            promise.resolve(true)
+        } catch (e: Exception) {
+            promise.reject("RESOLVE_MDM_CONFIG_ERROR", e.message, e)
+        }
+    }
+
     @ReactMethod
     fun configure(wsUrl: String, enrollmentToken: String?, promise: Promise) {
         try {

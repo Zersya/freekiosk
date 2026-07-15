@@ -120,6 +120,8 @@ class KioskHttpServer(
                 method == Method.POST && uri == "/api/app/launch" -> handleLaunchApp(session)
                 method == Method.POST && uri == "/api/app/install" -> handleInstallApp(session)
                 method == Method.POST && uri == "/api/app/uninstall" -> handleUninstallApp(session)
+                method == Method.POST && uri == "/api/config/backup" -> handleConfigBackup(session)
+                method == Method.POST && uri == "/api/config/restore" -> handleConfigRestore(session)
                 method == Method.POST && uri == "/api/js" -> handleExecuteJs(session)
                 method == Method.POST && uri == "/api/audio/play" -> handleAudioPlay(session)
                 method == Method.POST && uri == "/api/remote/text" -> handleKeyboardText(session)
@@ -519,6 +521,33 @@ class KioskHttpServer(
         }
 
         val result = commandHandler("uninstallApk", params)
+        return jsonSuccess(result)
+    }
+
+    private fun handleConfigBackup(session: IHTTPSession): Response {
+        checkControlAllowed()?.let { return it }
+
+        val body = parseBody(session)
+        val params = JSONObject().apply {
+            if (!body?.optString("label").isNullOrBlank()) {
+                put("label", body?.optString("label"))
+            }
+        }
+
+        val result = commandHandler("backupConfig", params)
+        return jsonSuccess(result)
+    }
+
+    private fun handleConfigRestore(session: IHTTPSession): Response {
+        checkControlAllowed()?.let { return it }
+
+        val body = parseBody(session)
+        val backupId = body?.optString("backupId", "") ?: ""
+        if (backupId.isEmpty()) {
+            return jsonError(Response.Status.BAD_REQUEST, "backupId is required")
+        }
+
+        val result = commandHandler("restoreConfig", JSONObject().put("backupId", backupId))
         return jsonSuccess(result)
     }
 

@@ -18,6 +18,7 @@ import OverlayServiceModule from '../utils/OverlayServiceModule';
 import BlockingOverlayModule from '../utils/BlockingOverlayModule';
 import AutoBrightnessModule from '../utils/AutoBrightnessModule';
 import { ApiService } from '../utils/ApiService';
+import { initMdmBackupCommandHandler, destroyMdmBackupCommandHandler } from '../utils/MdmBackupCommandHandler';
 import { mqttClient } from '../utils/MqttModule';
 import DeviceControlService from '../services/DeviceControlService';
 import { ScheduledEvent, getActiveEvent } from '../types/planner';
@@ -753,6 +754,7 @@ const KioskScreen: React.FC<KioskScreenProps> = ({ navigation }) => {
     };
 
     initApiService();
+    initMdmBackupCommandHandler();
 
     // MQTT background reconnection: check connection when app comes back to foreground
     const mqttAppStateSubscription = AppState.addEventListener('change', async (nextState) => {
@@ -773,6 +775,7 @@ const KioskScreen: React.FC<KioskScreenProps> = ({ navigation }) => {
     return () => {
       mqttAppStateSubscription.remove();
       ApiService.stopMqtt();
+      destroyMdmBackupCommandHandler();
       ApiService.destroy();
     };
   }, []);
