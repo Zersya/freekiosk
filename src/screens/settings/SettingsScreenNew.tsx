@@ -1534,15 +1534,23 @@ const SettingsScreenNew: React.FC<SettingsScreenProps> = ({ navigation }) => {
         const finalTapCount = isNaN(tapCount) ? 5 : Math.max(2, Math.min(20, tapCount));
         const finalTapTimeout = isNaN(tapTimeout) ? 1500 : Math.max(500, Math.min(5000, tapTimeout));
         await OverlayServiceModule.stopOverlayService();
-        await OverlayServiceModule.startOverlayService(
-          finalTapCount, 
-          finalTapTimeout, 
-          returnMode, 
-          returnButtonPosition,
-          externalAppPackage,
-          autoRelaunchApp,
-          allowNotifications
-        );
+        if (kioskEnabled) {
+          await OverlayServiceModule.startOverlayService(
+            finalTapCount, 
+            finalTapTimeout, 
+            returnMode, 
+            returnButtonPosition,
+            externalAppPackage,
+            autoRelaunchApp,
+            allowNotifications
+          );
+        } else {
+          try {
+            await AppLauncherModule.stopBackgroundMonitor();
+          } catch {
+            // Silent fail
+          }
+        }
       } catch (error) {
         // Silent fail
       }
@@ -1560,6 +1568,12 @@ const SettingsScreenNew: React.FC<SettingsScreenProps> = ({ navigation }) => {
       try {
         const packageToWhitelist = displayMode === 'external_app' ? externalAppPackage : null;
         await KioskModule.startLockTask(packageToWhitelist, allowPowerButton, allowNotifications, allowSystemInfo, lockscreenEmergencyCallEnabled);
+        if (displayMode === 'external_app') {
+          await LauncherModule.enableHomeLauncher();
+        }
+        if (isDeviceOwner && defaultLauncherEnabled) {
+          await KioskModule.setDefaultLauncherMode(true);
+        }
       } catch (error) {
         console.warn('[Settings] startLockTask error (non-blocking):', error);
       }
@@ -1574,6 +1588,7 @@ const SettingsScreenNew: React.FC<SettingsScreenProps> = ({ navigation }) => {
     } else {
       try {
         await KioskModule.stopLockTask();
+        await LauncherModule.disableHomeLauncher();
       } catch (error) {
         // Silent fail
       }

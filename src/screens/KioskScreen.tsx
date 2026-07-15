@@ -13,6 +13,7 @@ import { StorageService } from '../utils/storage';
 import { saveSecurePin, saveSecureMqttPassword, getSecureBasicAuthPassword } from '../utils/secureStorage';
 import KioskModule from '../utils/KioskModule';
 import AppLauncherModule from '../utils/AppLauncherModule';
+import LauncherModule from '../utils/LauncherModule';
 import OverlayServiceModule from '../utils/OverlayServiceModule';
 import BlockingOverlayModule from '../utils/BlockingOverlayModule';
 import AutoBrightnessModule from '../utils/AutoBrightnessModule';
@@ -95,6 +96,7 @@ const KioskScreen: React.FC<KioskScreenProps> = ({ navigation }) => {
   const appLaunchTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const isNavigatingToPinRef = useRef<boolean>(false); // Guard to prevent relaunch during 5-tap→PIN navigation
   const bootAppsLaunchedRef = useRef<boolean>(false); // Boot apps launched once per app session (never on Settings/PIN return)
+  const kioskEnabledRef = useRef<boolean>(true);
   const tapCountRef = useRef<number>(0);
   const tapTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   
@@ -1552,6 +1554,7 @@ const KioskScreen: React.FC<KioskScreenProps> = ({ navigation }) => {
       const savedAutoReload = bool(K.AUTO_RELOAD, true);
       const savedPauseWebMediaWhenHidden = bool(K.PAUSE_WEB_MEDIA_WHEN_HIDDEN, true);
       const savedKioskEnabled = bool(K.KIOSK_ENABLED, false);
+      kioskEnabledRef.current = savedKioskEnabled;
       const savedScreensaverEnabled = bool(K.SCREENSAVER_ENABLED, false);
       const savedDefaultBrightness = num(K.DEFAULT_BRIGHTNESS, 0.5);
       const savedScreensaverBrightness = num(K.SCREENSAVER_BRIGHTNESS, 0);
@@ -1910,6 +1913,14 @@ const KioskScreen: React.FC<KioskScreenProps> = ({ navigation }) => {
         }
       }
 
+      if (!savedKioskEnabled) {
+        try {
+          await LauncherModule.disableHomeLauncher();
+        } catch {
+          // Silent fail
+        }
+      }
+
       // Launch external app if in external_app mode
       console.log('[KioskScreen] Checking external app launch: displayMode=' + savedDisplayMode + ', package=' + savedExternalAppPackage + ', mode=' + savedExternalAppMode);
       
@@ -1931,7 +1942,7 @@ const KioskScreen: React.FC<KioskScreenProps> = ({ navigation }) => {
         }
       }
 
-      if (savedDisplayMode === 'external_app') {
+      if (savedDisplayMode === 'external_app' && savedKioskEnabled) {
         // Launch managed apps with launchOnBoot=true — only once per app session.
         // Calling this on every loadSettings() (e.g. return from Settings) would
         // launch boot apps again, bring Velocity to foreground, then bringFreeKioskToFront
@@ -2033,6 +2044,13 @@ const KioskScreen: React.FC<KioskScreenProps> = ({ navigation }) => {
           } else {
             console.log('[KioskScreen] Multi-app mode: showing app grid (' + homeScreenApps.length + ' apps)');
           }
+        }
+      } else if (savedDisplayMode === 'external_app' && !savedKioskEnabled) {
+        try {
+          await OverlayServiceModule.stopOverlayService();
+          await AppLauncherModule.stopBackgroundMonitor();
+        } catch {
+          // Silent fail
         }
       } else {
         console.log('[KioskScreen] NOT launching external app - displayMode:', savedDisplayMode, 'package:', savedExternalAppPackage);
@@ -2500,6 +2518,12 @@ const KioskScreen: React.FC<KioskScreenProps> = ({ navigation }) => {
       const finalTapTimeout = tapTimeout ?? returnTapTimeout;
       const finalReturnMode = mode ?? returnMode;
       const finalButtonPosition = buttonPos ?? returnButtonPosition;
+
+      if (!kioskEnabledRef.current) {
+        await AppLauncherModule.launchExternalApp(packageName);
+        setIsAppLaunched(true);
+        return;
+      }
 
       // Start OverlayService BEFORE launching the external app
       try {

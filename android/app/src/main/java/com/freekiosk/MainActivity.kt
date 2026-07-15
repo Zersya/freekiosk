@@ -302,6 +302,11 @@ class MainActivity : ReactActivity() {
    * unless the opt-in is enabled — so behavior is unchanged for everyone who hasn't turned it on.
    */
   private fun applyDefaultLauncherPolicy() {
+    if (!isKioskEnabled()) {
+      releaseHomeLauncherRole(preferSystemLauncher = true)
+      return
+    }
+
     if (!devicePolicyManager.isDeviceOwnerApp(packageName)) return
     val enabled = getAsyncStorageValue("@kiosk_default_launcher", "false") == "true"
     try {
@@ -322,6 +327,72 @@ class MainActivity : ReactActivity() {
       }
     } catch (e: Exception) {
       DebugLog.errorProduction("MainActivity", "Failed to apply default launcher policy: ${e.message}")
+    }
+  }
+
+  /**
+   * Stop hijacking the Home button so the device's real launcher opens again.
+   * Called when Lock Mode is off (temporary release — kiosk settings are unchanged).
+   */
+  fun releaseHomeLauncherRole(preferSystemLauncher: Boolean = false) {
+    disableHomeLauncherComponent()
+    if (!devicePolicyManager.isDeviceOwnerApp(packageName)) return
+
+    try {
+      devicePolicyManager.clearPackagePersistentPreferredActivities(adminComponent, packageName)
+      DebugLog.d("MainActivity", "Cleared FreeKiosk persistent Home policy")
+
+      if (!preferSystemLauncher) return
+
+      val homeIntent = Intent(Intent.ACTION_MAIN).addCategory(Intent.CATEGORY_HOME)
+      val candidates = packageManager.queryIntentActivities(
+        homeIntent,
+        PackageManager.MATCH_DEFAULT_ONLY
+      )
+      val systemLauncher = candidates
+        .map { it.activityInfo }
+        .firstOrNull { it.packageName != packageName }
+        ?: return
+
+      val filter = IntentFilter(Intent.ACTION_MAIN).apply {
+        addCategory(Intent.CATEGORY_HOME)
+        addCategory(Intent.CATEGORY_DEFAULT)
+      }
+      devicePolicyManager.addPersistentPreferredActivity(
+        adminComponent,
+        filter,
+        ComponentName(systemLauncher.packageName, systemLauncher.name)
+      )
+      DebugLog.d(
+        "MainActivity",
+        "Restored system launcher: ${systemLauncher.packageName}/${systemLauncher.name}"
+      )
+    } catch (e: Exception) {
+      DebugLog.errorProduction("MainActivity", "Failed to release Home launcher role: ${e.message}")
+    }
+  }
+
+  private fun disableHomeLauncherComponent() {
+    try {
+      packageManager.setComponentEnabledSetting(
+        ComponentName(this, HomeActivity::class.java),
+        PackageManager.COMPONENT_ENABLED_STATE_DISABLED,
+        PackageManager.DONT_KILL_APP
+      )
+    } catch (e: Exception) {
+      DebugLog.errorProduction("MainActivity", "Failed to disable HomeActivity: ${e.message}")
+    }
+  }
+
+  private fun enableHomeLauncherComponent() {
+    try {
+      packageManager.setComponentEnabledSetting(
+        ComponentName(this, HomeActivity::class.java),
+        PackageManager.COMPONENT_ENABLED_STATE_ENABLED,
+        PackageManager.DONT_KILL_APP
+      )
+    } catch (e: Exception) {
+      DebugLog.errorProduction("MainActivity", "Failed to enable HomeActivity: ${e.message}")
     }
   }
 
@@ -666,6 +737,7 @@ class MainActivity : ReactActivity() {
           // Power menu was likely just shown — defer re-lock to avoid focus conflict
           DebugLog.d("MainActivity", "Deferring re-lock: power menu may be active (${timeSinceFocusLost}ms since focus lost)")
           Handler(Looper.getMainLooper()).postDelayed({
+            if (!isKioskEnabled()) return@postDelayed
             if (!isTaskLocked()) {
               enableKioskRestrictions()
               startLockTask()
@@ -678,6 +750,18 @@ class MainActivity : ReactActivity() {
           DebugLog.d("MainActivity", "Re-started lock task on resume (with kiosk restrictions)")
         }
       }
+    } else {
+      if (isTaskLocked()) {
+        disableKioskRestrictions()
+        try {
+          stopLockTask()
+          DebugLog.d("MainActivity", "Released lock task on resume (lock mode disabled)")
+        } catch (e: Exception) {
+          DebugLog.errorProduction("MainActivity", "Failed to stop lock task: ${e.message}")
+        }
+      }
+      stopKioskWatchdog()
+      releaseHomeLauncherRole(preferSystemLauncher = true)
     }
   }
 

@@ -259,6 +259,49 @@ class KioskModule(reactContext: ReactApplicationContext) : ReactContextBaseJavaM
         }
     }
 
+    /** When Lock Mode is off, fully release kiosk so Home/recents work again. */
+    private fun releaseKioskIfDisabled(activity: MainActivity) {
+        if (isKioskEnabledInStorage()) return
+
+        try {
+            activity.disableKioskRestrictions()
+        } catch (e: Exception) {
+            android.util.Log.w("KioskModule", "disableKioskRestrictions failed: ${e.message}")
+        }
+        stopKioskWatchdog()
+        try {
+            BootReceiver.updateDeBootFlag(reactApplicationContext, false)
+        } catch (e: Exception) {
+            android.util.Log.w("KioskModule", "Failed to clear DE boot flag: ${e.message}")
+        }
+        try {
+            activity.releaseHomeLauncherRole(preferSystemLauncher = true)
+        } catch (e: Exception) {
+            android.util.Log.w("KioskModule", "releaseHomeLauncherRole failed: ${e.message}")
+        }
+        android.util.Log.d("KioskModule", "Kiosk fully released (lock mode disabled)")
+    }
+
+    private fun isKioskEnabledInStorage(): Boolean {
+        return try {
+            val dbPath = reactApplicationContext.getDatabasePath("RKStorage").absolutePath
+            val db = android.database.sqlite.SQLiteDatabase.openDatabase(
+                dbPath, null, android.database.sqlite.SQLiteDatabase.OPEN_READONLY
+            )
+            val cursor = db.rawQuery(
+                "SELECT value FROM catalystLocalStorage WHERE key = ?",
+                arrayOf("@kiosk_enabled")
+            )
+            val enabled = if (cursor.moveToFirst()) cursor.getString(0) == "true" else false
+            cursor.close()
+            db.close()
+            enabled
+        } catch (e: Exception) {
+            android.util.Log.w("KioskModule", "Cannot read kiosk_enabled: ${e.message}")
+            false
+        }
+    }
+
     /**
      * Block (or unblock) the factory reset option in system Settings via a Device Owner
      * user restriction (#201). Unlike lock-task features, DISALLOW_FACTORY_RESET is a
@@ -424,6 +467,7 @@ class KioskModule(reactContext: ReactApplicationContext) : ReactContextBaseJavaM
                             dpm.setScreenCaptureDisabled(adminComponent, false)
                         }
                         activity.stopLockTask()
+                        releaseKioskIfDisabled(activity)
                         android.util.Log.d("KioskModule", "Lock task stopped")
                         promise.resolve(true)
                     } catch (e: Exception) {
