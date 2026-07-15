@@ -3,7 +3,6 @@ package com.freekiosk.mdm
 import android.util.Log
 import com.facebook.react.bridge.Arguments
 import com.facebook.react.bridge.ReactApplicationContext
-import com.facebook.react.bridge.ReactContextBaseJavaModule
 import com.facebook.react.modules.core.DeviceEventManagerModule
 import org.json.JSONObject
 import java.util.UUID
@@ -28,7 +27,7 @@ object MdmBackupCommandBridge {
     private var reactContext: ReactApplicationContext? = null
 
     fun attach(context: ReactApplicationContext) {
-        reactContext = context.applicationContext as ReactApplicationContext
+        reactContext = context
     }
 
     fun detach() {
