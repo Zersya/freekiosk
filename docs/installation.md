@@ -173,7 +173,17 @@ Active admin set to component {com.freekiosk/com.freekiosk.DeviceAdminReceiver}
 > [!TIP]
 > **Success!** Your tablet is now in Device Owner mode.
 
-#### 4. Reboot (Optional)
+#### 4. Grant WRITE_SECURE_SETTINGS (Required)
+
+FreeKiosk needs this permission to programmatically enable the Accessibility Service (back-button suppression, remote assist, and related kiosk controls). Device Owner mode does **not** grant it automatically.
+
+```bash
+adb shell pm grant com.freekiosk android.permission.WRITE_SECURE_SETTINGS
+```
+
+This is a one-time grant and persists across reboots.
+
+#### 5. Reboot (Optional)
 
 ```bash
 adb reboot
@@ -266,6 +276,18 @@ sudo udevadm control --reload-rules
 1. Reboot the tablet
 2. Exit and restart kiosk mode
 3. Verify Device Owner is active
+
+### Accessibility Service: "Permission denial: WRITE_SECURE_SETTINGS"
+
+**Cause:** The Accessibility Service cannot be enabled automatically without `WRITE_SECURE_SETTINGS`. Device Owner alone does not grant this permission.
+
+**Solution:** Run the one-time ADB grant (see [Step 4](#4-grant-write_secure_settings-required)):
+
+```bash
+adb shell pm grant com.freekiosk android.permission.WRITE_SECURE_SETTINGS
+```
+
+Then tap **Enable Automatically (Device Owner)** in Settings → Advanced → Accessibility Service, or enable it manually in Android Settings → Accessibility.
 
 
 ## Removing Device Owner
