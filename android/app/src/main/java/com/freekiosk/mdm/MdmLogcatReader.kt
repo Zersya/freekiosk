@@ -1,6 +1,5 @@
 package com.freekiosk.mdm
 
-import android.os.Process
 import android.util.Log
 import org.json.JSONObject
 import java.io.BufferedReader
@@ -30,7 +29,7 @@ class MdmLogcatReader(
 
     private val running = AtomicBoolean(false)
     private var readerThread: Thread? = null
-    private var process: Process? = null
+    private var logcatProcess: java.lang.Process? = null
 
     @Suppress("UNUSED_PARAMETER")
     fun start(filter: JSONObject? = null) {
@@ -81,7 +80,7 @@ class MdmLogcatReader(
     }
 
     private fun buildScopedArgs(): List<String> {
-        val uid = Process.myUid()
+        val uid = android.os.Process.myUid()
         val tagFilter = SCOPED_TAGS.joinToString(" ") { "$it:D" }
         return listOf("logcat", "-v", "threadtime", "--uid=$uid", "-s", tagFilter)
     }
@@ -91,7 +90,7 @@ class MdmLogcatReader(
         val proc = ProcessBuilder(args)
             .redirectErrorStream(true)
             .start()
-        process = proc
+        logcatProcess = proc
 
         BufferedReader(InputStreamReader(proc.inputStream)).use { reader ->
             while (running.get()) {
@@ -104,13 +103,13 @@ class MdmLogcatReader(
 
     private fun cleanupProcess() {
         try {
-            process?.destroy()
+            logcatProcess?.destroy()
         } catch (_: Exception) {
         }
         try {
-            process?.destroyForcibly()
+            logcatProcess?.destroyForcibly()
         } catch (_: Exception) {
         }
-        process = null
+        logcatProcess = null
     }
 }
