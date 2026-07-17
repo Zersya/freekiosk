@@ -36,6 +36,7 @@ class MdmAgentClient(private val context: Context) {
         // Cap the longest side of streamed frames so live view stays real-time.
         private const val STREAM_MAX_DIMENSION = 1080
         private const val STREAM_MAX_FPS = 15
+        private val AGENT_CAPABILITIES = listOf("status", "commands", "stream", "install", "logs")
     }
 
     private val mainHandler = Handler(Looper.getMainLooper())
@@ -53,6 +54,7 @@ class MdmAgentClient(private val context: Context) {
 
     private val screenshotExecutor = Executors.newSingleThreadExecutor()
     private val streamSendPending = AtomicBoolean(false)
+    private val logSendPending = AtomicBoolean(false)
 
     private var webSocket: WebSocket? = null
     private var reconnectDelayMs = 1_000L
@@ -76,6 +78,8 @@ class MdmAgentClient(private val context: Context) {
 
     private var activeStreamSessionId: String? = null
     private var streamRunnable: Runnable? = null
+    private var activeLogSessionId: String? = null
+    private var logcatReader: MdmLogcatReader? = null
 
     var onConnectionChanged: ((Boolean) -> Unit)? = null
     var onError: ((String) -> Unit)? = null
@@ -144,6 +148,7 @@ class MdmAgentClient(private val context: Context) {
         mainHandler.removeCallbacks(statusRunnable)
         mainHandler.removeCallbacks(reconnectRunnable)
         stopStreaming()
+        stopLogStreaming()
         streamThread?.quitSafely()
         streamThread = null
         streamHandler = null
@@ -201,6 +206,7 @@ class MdmAgentClient(private val context: Context) {
         synchronized(connectLock) { phase = ConnectionPhase.IDLE }
         mainHandler.removeCallbacks(statusRunnable)
         stopStreaming()
+        stopLogStreaming()
         onConnectionChanged?.invoke(false)
         if (!disconnectRequested.get()) {
             scheduleReconnect()
@@ -227,7 +233,7 @@ class MdmAgentClient(private val context: Context) {
                 put("type", "enroll")
                 put("enrollmentToken", enrollmentToken)
                 put("deviceKey", deviceKey)
-                put("capabilities", org.json.JSONArray(listOf("status", "commands", "stream", "install")))
+                put("capabilities", org.json.JSONArray(AGENT_CAPABILITIES))
                 put("info", JSONObject().apply {
                     put("name", Build.MODEL)
                     put("model", Build.MODEL)
@@ -241,7 +247,7 @@ class MdmAgentClient(private val context: Context) {
                 put("deviceId", deviceId)
                 put("agentToken", agentToken)
                 put("protocolVersion", PROTOCOL_VERSION)
-                put("capabilities", org.json.JSONArray(listOf("status", "commands", "stream", "install")))
+                put("capabilities", org.json.JSONArray(AGENT_CAPABILITIES))
             }
         } else {
             onError?.invoke("MDM agent is not enrolled")
@@ -285,6 +291,8 @@ class MdmAgentClient(private val context: Context) {
                 "command" -> handleCommand(message)
                 "stream_start" -> handleStreamStart(message)
                 "stream_stop" -> handleStreamStop(message)
+                "log_start" -> handleLogStart(message)
+                "log_stop" -> handleLogStop(message)
                 "error" -> onError?.invoke(message.optString("message", "Agent error"))
                 "pong", "status_ack" -> Unit
             }
@@ -462,6 +470,75 @@ class MdmAgentClient(private val context: Context) {
         activeStreamSessionId = null
         streamSendPending.set(false)
         DeviceOwnerScreenCapture.stopRefresh()
+    }
+
+    private fun handleLogStart(message: JSONObject) {
+        val sessionId = message.optString("sessionId", "")
+        if (sessionId.isBlank()) return
+
+        stopLogStreaming()
+        activeLogSessionId = sessionId
+        val filter = message.optJSONObject("filter")
+
+        logcatReader = MdmLogcatReader(
+            onLine = { line -> sendLogLine(sessionId, line) },
+            onScopeResolved = { scope -> sendLogMeta(sessionId, scope) },
+            onStopped = {
+                if (activeLogSessionId == sessionId) {
+                    activeLogSessionId = null
+                    logcatReader = null
+                }
+            },
+        )
+        logcatReader?.start(filter)
+        Log.i(TAG, "Started agent log session $sessionId")
+    }
+
+    private fun handleLogStop(message: JSONObject) {
+        val sessionId = message.optString("sessionId", "")
+        if (sessionId.isBlank() || sessionId == activeLogSessionId) {
+            stopLogStreaming()
+        }
+    }
+
+    private fun stopLogStreaming() {
+        logcatReader?.stop()
+        logcatReader = null
+        activeLogSessionId = null
+        logSendPending.set(false)
+    }
+
+    private fun sendLogMeta(sessionId: String, scope: String) {
+        val socket = webSocket ?: return
+        if (!sessionReady.get() || activeLogSessionId != sessionId) return
+
+        val payload = JSONObject().apply {
+            put("type", "log_meta")
+            put("sessionId", sessionId)
+            put("scope", scope)
+            put("timestamp", System.currentTimeMillis() / 1000)
+        }
+        socket.send(payload.toString())
+    }
+
+    private fun sendLogLine(sessionId: String, line: String) {
+        val socket = webSocket ?: return
+        if (!sessionReady.get() || activeLogSessionId != sessionId) return
+        if (!logSendPending.compareAndSet(false, true)) return
+
+        try {
+            val payload = JSONObject().apply {
+                put("type", "log_line")
+                put("sessionId", sessionId)
+                put("line", line)
+                put("timestamp", System.currentTimeMillis() / 1000)
+            }
+            if (!socket.send(payload.toString())) {
+                Log.w(TAG, "Log line dropped — WebSocket send queue full")
+            }
+        } finally {
+            logSendPending.set(false)
+        }
     }
 
     private fun publishStatus() {
