@@ -165,6 +165,9 @@ export type IconName =
   | 'server-network'
   | 'server'
   | 'remote'
+  | 'monitor-screenshot'
+  | 'cloud-sync'
+  | 'ticket-confirmation'
   | 'numeric'
   | 'home-assistant'
   // Files & Folders

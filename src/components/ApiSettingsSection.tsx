@@ -26,6 +26,8 @@ import { httpServer } from '../utils/HttpServerModule';
 import { screenCapture } from '../utils/ScreenCaptureModule';
 import { mdmAgent } from '../utils/MdmAgentModule';
 import KioskModule from '../utils/KioskModule';
+import MdmEnrollmentQrScanner from './MdmEnrollmentQrScanner';
+import type { MdmEnrollmentQrPayload } from '../utils/mdmEnrollmentQr';
 
 interface ApiSettingsSectionProps {
   onSettingsChanged?: () => void;
@@ -54,6 +56,7 @@ export const ApiSettingsSection: React.FC<ApiSettingsSectionProps> = ({
   const [mdmEnrolled, setMdmEnrolled] = useState(false);
   const [mdmLoading, setMdmLoading] = useState(false);
   const [isDeviceOwner, setIsDeviceOwner] = useState(false);
+  const [showMdmQrScanner, setShowMdmQrScanner] = useState(false);
 
   // Load settings on mount
   useEffect(() => {
@@ -377,9 +380,34 @@ export const ApiSettingsSection: React.FC<ApiSettingsSectionProps> = ({
   const refreshMdmAgentInfo = async () => {
     const info = await mdmAgent.getAgentInfo();
     setMdmEnabled(info.enabled);
+    setMdmWsUrl(info.wsUrl || '');
     setMdmConnected(info.connected);
     setMdmDeviceId(info.deviceId || '');
     setMdmEnrolled(info.enrolled);
+  };
+
+  const handleMdmQrEnrollment = async (payload: MdmEnrollmentQrPayload) => {
+    setMdmLoading(true);
+    try {
+      // Restart even when an unenrolled agent is already retrying with stale details.
+      await mdmAgent.stopAgent();
+      await mdmAgent.configure(payload.wsUrl, payload.enrollmentToken);
+      await mdmAgent.startAgent();
+      setMdmWsUrl(payload.wsUrl);
+      setMdmEnrollToken(payload.enrollmentToken);
+      setMdmEnabled(true);
+      setShowMdmQrScanner(false);
+      await refreshMdmAgentInfo();
+      onSettingsChanged?.();
+      Alert.alert(
+        'Connecting to MDM',
+        'Enrollment details were saved and the MDM agent is connecting. The status will update when enrollment completes.',
+      );
+    } catch (error: any) {
+      throw new Error(error?.message || 'Failed to configure the MDM agent.');
+    } finally {
+      setMdmLoading(false);
+    }
   };
 
   const handleReEnroll = () => {
@@ -636,6 +664,22 @@ export const ApiSettingsSection: React.FC<ApiSettingsSectionProps> = ({
           )}
         </View>
 
+        {!mdmEnrolled && (
+          <TouchableOpacity
+            style={styles.scanQrButton}
+            onPress={() => setShowMdmQrScanner(true)}
+            disabled={mdmLoading}
+          >
+            <Icon name="camera-outline" size={20} color="#FFFFFF" />
+            <View style={styles.scanQrButtonCopy}>
+              <Text style={styles.scanQrButtonTitle}>Scan enrollment QR</Text>
+              <Text style={styles.scanQrButtonHint}>
+                Fill the URL and token, then connect automatically
+              </Text>
+            </View>
+          </TouchableOpacity>
+        )}
+
         <TouchableOpacity
           style={styles.reEnrollButton}
           onPress={handleReEnroll}
@@ -685,6 +729,12 @@ export const ApiSettingsSection: React.FC<ApiSettingsSectionProps> = ({
             Enable REST API above so MDM can run commands. Works on cellular without VPN — the tablet initiates the connection.
           </Text>
         </View>
+
+        <MdmEnrollmentQrScanner
+          visible={showMdmQrScanner}
+          onClose={() => setShowMdmQrScanner(false)}
+          onEnroll={handleMdmQrEnrollment}
+        />
       </SettingsSection>
     )}
     </>
@@ -801,6 +851,31 @@ const styles = StyleSheet.create({
     marginTop: 6,
     fontSize: 12,
     color: '#666',
+  },
+  scanQrButton: {
+    minHeight: 64,
+    marginBottom: 12,
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+    borderRadius: 8,
+    backgroundColor: '#EF3434',
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  scanQrButtonCopy: {
+    flex: 1,
+    marginLeft: 12,
+  },
+  scanQrButtonTitle: {
+    color: '#FFFFFF',
+    fontSize: 14,
+    fontWeight: '700',
+  },
+  scanQrButtonHint: {
+    color: '#FFFFFF',
+    fontSize: 12,
+    lineHeight: 17,
+    marginTop: 2,
   },
   reEnrollButton: {
     flexDirection: 'row',
