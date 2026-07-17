@@ -149,6 +149,10 @@ class MainActivity : ReactActivity() {
   override fun onNewIntent(intent: Intent?) {
     super.onNewIntent(intent)
     setIntent(intent) // Important: update the intent
+
+    if (intent?.getBooleanExtra(ScreenController.EXTRA_WAKE_SCREEN, false) == true) {
+      ScreenController.handleWakeScreenIntent(this)
+    }
     
     // Handle ADB config on new intent too (when app is already running)
     // If returns true, the app will restart and we should not continue
@@ -618,6 +622,11 @@ class MainActivity : ReactActivity() {
 
   override fun onResume() {
     super.onResume()
+
+    if (intent?.getBooleanExtra(ScreenController.EXTRA_WAKE_SCREEN, false) == true) {
+      intent?.removeExtra(ScreenController.EXTRA_WAKE_SCREEN)
+      ScreenController.handleWakeScreenIntent(this)
+    }
 
     readExternalAppConfig()
     
