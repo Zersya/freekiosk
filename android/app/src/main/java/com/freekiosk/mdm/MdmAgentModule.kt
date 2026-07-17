@@ -126,7 +126,7 @@ class MdmAgentModule(private val reactContext: ReactApplicationContext) :
                 for (i in 0 until apps.length()) {
                     val app = apps.getJSONObject(i)
                     array.pushMap(Arguments.createMap().apply {
-                        putInt("id", app.optInt("id"))
+                        putString("id", app.optString("id"))
                         putString("name", app.optString("name"))
                         putString("packageName", app.optString("packageName"))
                         putString("versionName", app.optString("versionName", null))
@@ -233,8 +233,8 @@ class MdmAgentModule(private val reactContext: ReactApplicationContext) :
             putBoolean("updateAvailable", json.optBoolean("updateAvailable", false))
             val latest = json.optJSONObject("latest")
             if (latest != null) {
-                putMap("latest", Arguments.createMap().apply {
-                    putInt("appId", latest.optInt("appId"))
+                    putMap("latest", Arguments.createMap().apply {
+                        putString("appId", latest.optString("appId"))
                     putString("name", latest.optString("name"))
                     if (!latest.isNull("versionName")) {
                         putString("versionName", latest.optString("versionName"))

@@ -1,6 +1,7 @@
 package com.freekiosk.api
 
 import com.freekiosk.MjpegStreamInputStream
+import com.freekiosk.mdm.optAppId
 import com.freekiosk.ScreenCaptureManager
 import fi.iki.elonen.NanoHTTPD
 import org.json.JSONObject
@@ -492,9 +493,7 @@ class KioskHttpServer(
             put("fileName", body?.optString("fileName", "app.apk") ?: "app.apk")
             put("packageName", body?.optString("packageName", ""))
             put("sha256", body?.optString("sha256", ""))
-            if (body?.has("appId") == true) {
-                put("appId", body.optInt("appId"))
-            }
+            body?.optAppId("appId")?.let { put("appId", it) }
             if (body?.has("versionCode") == true) {
                 put("versionCode", body.optInt("versionCode"))
             }
@@ -515,9 +514,7 @@ class KioskHttpServer(
 
         val params = JSONObject().apply {
             put("packageName", packageName)
-            if (body?.has("appId") == true) {
-                put("appId", body.optInt("appId"))
-            }
+            body?.optAppId("appId")?.let { put("appId", it) }
         }
 
         val result = commandHandler("uninstallApk", params)

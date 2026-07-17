@@ -28,7 +28,7 @@ data class ApkInstallJob(
     val downloadUrl: String,
     val fileName: String,
     val expectedSha256: String?,
-    val appId: Int?,
+    val appId: String?,
     val packageName: String?,
     val displayName: String? = null,
 )
@@ -99,7 +99,7 @@ class ApkInstallHelper private constructor(private val appContext: Context) {
                         put("success", true)
                         put("status", "installed")
                         put("packageName", job.packageName)
-                        put("appId", job.appId)
+                        job.appId?.let { put("appId", it) }
                     })
                     latch?.countDown()
                 }
@@ -113,7 +113,7 @@ class ApkInstallHelper private constructor(private val appContext: Context) {
                         put("success", false)
                         put("status", "failed")
                         put("error", error)
-                        put("appId", job.appId)
+                        job.appId?.let { put("appId", it) }
                     })
                     latch?.countDown()
                 }
@@ -229,7 +229,7 @@ class ApkInstallHelper private constructor(private val appContext: Context) {
 
                 val intent = Intent(appContext, ApkInstallReceiver::class.java).apply {
                     putExtra(ApkInstallReceiver.EXTRA_JOB_ID, job.id)
-                    putExtra(ApkInstallReceiver.EXTRA_APP_ID, job.appId ?: -1)
+                    putExtra(ApkInstallReceiver.EXTRA_APP_ID, job.appId)
                     putExtra(ApkInstallReceiver.EXTRA_PACKAGE_NAME, job.packageName)
                 }
                 val pendingIntent = PendingIntent.getBroadcast(

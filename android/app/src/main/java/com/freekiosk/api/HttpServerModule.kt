@@ -1,5 +1,6 @@
 package com.freekiosk.api
 
+import com.freekiosk.mdm.optAppId
 import android.app.ActivityManager
 import android.content.Context
 import android.content.Intent
@@ -967,7 +968,7 @@ class HttpServerModule(private val reactContext: ReactApplicationContext) :
                     downloadUrl = downloadUrl,
                     fileName = params?.optString("fileName", "app.apk") ?: "app.apk",
                     expectedSha256 = params?.optString("sha256", "")?.takeIf { it.isNotBlank() },
-                    appId = params?.optInt("appId")?.takeIf { it > 0 },
+                    appId = params?.optAppId("appId"),
                     packageName = packageName,
                 )
 
@@ -993,7 +994,7 @@ class HttpServerModule(private val reactContext: ReactApplicationContext) :
                     }
                 }
 
-                val appId = params?.optInt("appId")?.takeIf { it > 0 }
+                val appId = params?.optAppId("appId")
                 val result = com.freekiosk.ApkUninstallHelper.uninstall(
                     reactContext,
                     packageName,

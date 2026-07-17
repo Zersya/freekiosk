@@ -98,22 +98,22 @@ function isBusyStatus(status: RowStatus) {
 
 const InstallerScreen: React.FC<InstallerScreenProps> = ({ navigation }) => {
   const [apps, setApps] = useState<MdmCatalogApp[]>([]);
-  const [selectedIds, setSelectedIds] = useState<Set<number>>(new Set());
-  const [rowStatus, setRowStatus] = useState<Record<number, RowStatus>>({});
-  const [rowMessages, setRowMessages] = useState<Record<number, string>>({});
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  const [rowStatus, setRowStatus] = useState<Record<string, RowStatus>>({});
+  const [rowMessages, setRowMessages] = useState<Record<string, string>>({});
   const [isLoading, setIsLoading] = useState(true);
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [isInstalling, setIsInstalling] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
-  const pendingInstallsRef = useRef<Set<number>>(new Set());
-  const rowStatusRef = useRef<Record<number, RowStatus>>({});
+  const pendingInstallsRef = useRef<Set<string>>(new Set());
+  const rowStatusRef = useRef<Record<string, RowStatus>>({});
 
   useEffect(() => {
     rowStatusRef.current = rowStatus;
   }, [rowStatus]);
 
-  const markInstallDone = useCallback((appId: number) => {
+  const markInstallDone = useCallback((appId: string) => {
     pendingInstallsRef.current.delete(appId);
     if (pendingInstallsRef.current.size === 0) {
       setIsInstalling(false);
@@ -143,7 +143,7 @@ const InstallerScreen: React.FC<InstallerScreenProps> = ({ navigation }) => {
   }, []);
 
   const handleInstallSuccess = useCallback(async (event: ApkInstallResultEvent) => {
-    if (event.appId <= 0) return;
+    if (!event.appId) return;
     await syncManagedApp(event.packageName, event.displayName);
     setRowStatus((prev) => ({ ...prev, [event.appId]: 'installed' }));
     setRowMessages((prev) => {
@@ -249,7 +249,7 @@ const InstallerScreen: React.FC<InstallerScreenProps> = ({ navigation }) => {
 
   useEffect(() => {
     const progressSub = apkInstall.addProgressListener((event) => {
-      if (event.appId <= 0) return;
+      if (!event.appId) return;
       const nextStatus = mapStage(event.stage);
       setRowStatus((prev) => ({ ...prev, [event.appId]: nextStatus }));
       if (event.message && nextStatus === 'failed') {
@@ -275,7 +275,7 @@ const InstallerScreen: React.FC<InstallerScreenProps> = ({ navigation }) => {
       void handleInstallSuccess(event);
     });
     const errorSub = apkInstall.addErrorListener((event) => {
-      if (event.appId <= 0) return;
+      if (!event.appId) return;
       setRowStatus((prev) => ({ ...prev, [event.appId]: 'failed' }));
       if (event.error) {
         setRowMessages((prev) => ({ ...prev, [event.appId]: event.error! }));
@@ -316,7 +316,7 @@ const InstallerScreen: React.FC<InstallerScreenProps> = ({ navigation }) => {
     return 'Apps assigned to this device';
   }, [isLoading, installStats]);
 
-  const toggleSelection = (appId: number) => {
+  const toggleSelection = (appId: string) => {
     const app = apps.find((entry) => entry.id === appId);
     const status = rowStatus[appId];
     if (isBusyStatus(status) || (app && isOnDevice(app) && !app.updateAvailable)) return;

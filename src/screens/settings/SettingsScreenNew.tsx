@@ -1177,7 +1177,7 @@ const SettingsScreenNew: React.FC<SettingsScreenProps> = ({ navigation }) => {
     if (!ENABLE_SELF_UPDATE) return undefined;
 
     const progressSub = apkInstall.addProgressListener((event) => {
-      if (event.appId <= 0) return;
+      if (!event.appId) return;
       const label = event.stage === 'downloading'
         ? 'Downloading…'
         : event.stage === 'installing'
@@ -1191,7 +1191,7 @@ const SettingsScreenNew: React.FC<SettingsScreenProps> = ({ navigation }) => {
       }
     });
     const completeSub = apkInstall.addCompleteListener((event) => {
-      if (event.appId <= 0) return;
+      if (!event.appId) return;
       setDownloading(false);
       setUpdateProgressLabel('');
       setUpdateAvailable(false);
@@ -1199,7 +1199,7 @@ const SettingsScreenNew: React.FC<SettingsScreenProps> = ({ navigation }) => {
       Alert.alert('Update installed', 'TransKIOSK will restart to finish applying the update.');
     });
     const errorSub = apkInstall.addErrorListener((event) => {
-      if (event.appId <= 0) return;
+      if (!event.appId) return;
       setDownloading(false);
       setUpdateProgressLabel('');
       Alert.alert('Update failed', event.error || 'Installation failed.');

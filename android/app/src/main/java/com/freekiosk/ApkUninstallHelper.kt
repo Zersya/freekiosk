@@ -20,7 +20,7 @@ object ApkUninstallHelper {
     fun uninstall(
         context: Context,
         packageName: String,
-        appId: Int? = null,
+        appId: String? = null,
         waitForCompletion: Boolean = true,
         timeoutMs: Long = 60_000L,
     ): JSONObject {
@@ -48,7 +48,7 @@ object ApkUninstallHelper {
                 put("success", true)
                 put("status", "uninstalled")
                 put("packageName", packageName)
-                if (appId != null && appId > 0) put("appId", appId)
+                appId?.let { put("appId", it) }
                 put("message", "Package was not installed")
             }
         }
@@ -71,7 +71,7 @@ object ApkUninstallHelper {
                     put("success", true)
                     put("status", "uninstalled")
                     put("packageName", packageName)
-                    if (appId != null && appId > 0) put("appId", appId)
+                    appId?.let { put("appId", it) }
                 })
                 latch?.countDown()
             }
@@ -86,9 +86,7 @@ object ApkUninstallHelper {
             val intent = Intent(context, ApkUninstallReceiver::class.java).apply {
                 putExtra(ApkUninstallReceiver.EXTRA_JOB_ID, jobId)
                 putExtra(ApkUninstallReceiver.EXTRA_PACKAGE_NAME, packageName)
-                if (appId != null && appId > 0) {
-                    putExtra(ApkUninstallReceiver.EXTRA_APP_ID, appId)
-                }
+                appId?.let { putExtra(ApkUninstallReceiver.EXTRA_APP_ID, it) }
             }
             val pendingIntent = PendingIntent.getBroadcast(
                 context,
@@ -114,7 +112,7 @@ object ApkUninstallHelper {
                 put("status", "queued")
                 put("jobId", jobId)
                 put("packageName", packageName)
-                if (appId != null && appId > 0) put("appId", appId)
+                appId?.let { put("appId", it) }
             }
         }
 
@@ -127,18 +125,18 @@ object ApkUninstallHelper {
         return resultRef.get() ?: failure("Uninstall did not return a result", appId, packageName)
     }
 
-    private fun failure(error: String, appId: Int?, packageName: String? = null): JSONObject {
+    private fun failure(error: String, appId: String?, packageName: String? = null): JSONObject {
         return JSONObject().apply {
             put("success", false)
             put("status", "failed")
             put("error", error)
             if (packageName != null) put("packageName", packageName)
-            if (appId != null && appId > 0) put("appId", appId)
+            appId?.let { put("appId", it) }
         }
     }
 
-    private fun reportUninstallStatus(context: Context, appId: Int?) {
-        val id = appId ?: return
+    private fun reportUninstallStatus(context: Context, appId: String?) {
+        val id = appId?.takeIf { it.isNotBlank() } ?: return
         com.freekiosk.mdm.MdmInstallReporter.reportStatus(context, id, "uninstalled", null)
     }
 

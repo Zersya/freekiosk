@@ -2,7 +2,7 @@ import { NativeEventEmitter, NativeModules, Platform } from 'react-native';
 
 export interface ApkInstallProgressEvent {
   jobId: string;
-  appId: number;
+  appId?: string;
   packageName?: string;
   stage: string;
   message?: string;
@@ -10,7 +10,7 @@ export interface ApkInstallProgressEvent {
 
 export interface ApkInstallResultEvent {
   jobId: string;
-  appId: number;
+  appId?: string;
   packageName?: string;
   displayName?: string;
   addedToHomeScreen?: boolean;
@@ -28,7 +28,7 @@ class ApkInstallService {
     downloadUrl: string;
     fileName: string;
     sha256?: string;
-    appId?: number;
+    appId?: string;
     packageName?: string;
     displayName?: string;
   }): Promise<string> {

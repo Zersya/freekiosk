@@ -9,7 +9,7 @@ export interface MdmAgentInfo {
 }
 
 export interface MdmKioskUpdateLatest {
-  appId: number;
+  appId: string;
   name: string;
   versionName?: string;
   versionCode: number;
@@ -53,7 +53,7 @@ export interface MdmConfigBackupListResponse {
 }
 
 export interface MdmCatalogApp {
-  id: number;
+  id: string;
   name: string;
   packageName: string;
   versionName?: string;

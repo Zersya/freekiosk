@@ -26,7 +26,7 @@ class ApkInstallModule(private val reactContext: ReactApplicationContext) :
         downloadUrl: String,
         fileName: String,
         sha256: String?,
-        appId: Int?,
+        appId: String?,
         packageName: String?,
         displayName: String?,
         promise: Promise,
@@ -41,7 +41,7 @@ class ApkInstallModule(private val reactContext: ReactApplicationContext) :
                 downloadUrl = downloadUrl,
                 fileName = if (fileName.isBlank()) "app.apk" else fileName,
                 expectedSha256 = sha256?.takeIf { it.isNotBlank() },
-                appId = appId?.takeIf { it > 0 },
+                appId = appId?.takeIf { it.isNotBlank() },
                 packageName = packageName?.takeIf { it.isNotBlank() },
                 displayName = displayName?.takeIf { it.isNotBlank() },
             )
@@ -62,7 +62,7 @@ class ApkInstallModule(private val reactContext: ReactApplicationContext) :
     override fun onProgress(job: ApkInstallJob, stage: ApkInstallStage, message: String?) {
         sendEvent(EVENT_PROGRESS, Arguments.createMap().apply {
             putString("jobId", job.id)
-            putInt("appId", job.appId ?: -1)
+            job.appId?.let { putString("appId", it) }
             putString("packageName", job.packageName)
             putString("stage", stage.name.lowercase())
             putString("message", message)
@@ -72,7 +72,7 @@ class ApkInstallModule(private val reactContext: ReactApplicationContext) :
     override fun onComplete(job: ApkInstallJob) {
         sendEvent(EVENT_COMPLETE, Arguments.createMap().apply {
             putString("jobId", job.id)
-            putInt("appId", job.appId ?: -1)
+            job.appId?.let { putString("appId", it) }
             putString("packageName", job.packageName)
             putString("displayName", job.displayName)
             putBoolean("addedToHomeScreen", !job.packageName.isNullOrBlank())
@@ -82,7 +82,7 @@ class ApkInstallModule(private val reactContext: ReactApplicationContext) :
     override fun onError(job: ApkInstallJob, error: String) {
         sendEvent(EVENT_ERROR, Arguments.createMap().apply {
             putString("jobId", job.id)
-            putInt("appId", job.appId ?: -1)
+            job.appId?.let { putString("appId", it) }
             putString("packageName", job.packageName)
             putString("error", error)
         })

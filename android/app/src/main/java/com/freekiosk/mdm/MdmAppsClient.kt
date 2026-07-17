@@ -17,7 +17,7 @@ object MdmInstallReporter {
         .readTimeout(15, TimeUnit.SECONDS)
         .build()
 
-    fun reportStatus(context: Context, appId: Int, status: String, errorMessage: String?) {
+    fun reportStatus(context: Context, appId: String, status: String, errorMessage: String?) {
         val deviceId = MdmAgentPrefs.getDeviceId(context)
         val agentToken = MdmAgentPrefs.getAgentToken(context)
         val baseUrl = MdmAppsClient.getRestBaseUrl(context)
