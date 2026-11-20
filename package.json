@@ -9,7 +9,9 @@
     "typecheck": "tsc --noEmit",
     "start": "react-native start",
     "test": "jest",
-    "postinstall": "patch-package"
+    "postinstall": "patch-package",
+    "windows": "npx @react-native-community/cli run-windows",
+    "test:windows": "jest --config jest.config.windows.js"
   },
   "dependencies": {
     "@react-native-async-storage/async-storage": "^2.2.0",
@@ -31,7 +33,9 @@
     "react-native-screens": "^4.16.0",
     "react-native-vector-icons": "^10.3.0",
     "react-native-vision-camera": "^4.7.3",
-    "react-native-webview": "^13.16.0"
+    "react-native-webview": "^13.16.0",
+    "react-native-webview-windows": "npm:react-native-webview@^17.1.0",
+    "react-native-windows": "^0.82.8"
   },
   "devDependencies": {
     "@babel/core": "^7.25.2",
@@ -52,9 +56,17 @@
     "patch-package": "^8.0.1",
     "prettier": "2.8.8",
     "react-test-renderer": "19.1.1",
-    "typescript": "^5.8.3"
+    "typescript": "^5.8.3",
+    "@rnx-kit/jest-preset": "^0.1.17"
   },
   "engines": {
     "node": ">=20"
+  },
+  "react-native-windows": {
+    "init-windows": {
+      "name": "FreeKiosk",
+      "namespace": "FreeKiosk",
+      "template": "cpp-app"
+    }
   }
 }
