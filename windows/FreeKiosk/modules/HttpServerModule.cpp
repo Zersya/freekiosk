@@ -31,11 +31,11 @@ void HttpServerModule::getLocalIp(ReactPromise<std::string> promise) noexcept {
   promise.Resolve("127.0.0.1");
 }
 
-void HttpServerModule::updateStatus(winrt::Windows::Foundation::IInspectable status, ReactPromise<void> promise) noexcept {
+void HttpServerModule::updateStatus(std::string status, ReactPromise<void> promise) noexcept {
   promise.Resolve();
 }
 
-void HttpServerModule::sendCommand(std::string path, winrt::Windows::Foundation::IInspectable params, ReactPromise<void> promise) noexcept {
+void HttpServerModule::sendCommand(std::string path, std::string params, ReactPromise<void> promise) noexcept {
   promise.Resolve();
 }
 

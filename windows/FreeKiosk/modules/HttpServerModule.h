@@ -28,10 +28,10 @@ struct HttpServerModule {
   void getLocalIp(winrt::Microsoft::ReactNative::ReactPromise<std::string> promise) noexcept;
 
   REACT_METHOD(updateStatus)
-  void updateStatus(winrt::Windows::Foundation::IInspectable status, winrt::Microsoft::ReactNative::ReactPromise<void> promise) noexcept;
+  void updateStatus(std::string status, winrt::Microsoft::ReactNative::ReactPromise<void> promise) noexcept;
 
   REACT_METHOD(sendCommand)
-  void sendCommand(std::string path, winrt::Windows::Foundation::IInspectable params, winrt::Microsoft::ReactNative::ReactPromise<void> promise) noexcept;
+  void sendCommand(std::string path, std::string params, winrt::Microsoft::ReactNative::ReactPromise<void> promise) noexcept;
 
   winrt::Microsoft::ReactNative::ReactContext m_reactContext;
 };
