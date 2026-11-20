@@ -33,7 +33,7 @@ jobs:
         run: |
           $script = "node_modules\react-native-windows\scripts\rnw-dependencies.ps1"
           if (Test-Path $script) {
-            & $script -WinAppSDK
+            & $script -Tags vs2022,appDev
           } else {
             Write-Host "rnw-dependencies.ps1 not found, skipping"
           }
