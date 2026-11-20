@@ -1,7 +1,6 @@
 #pragma once
 
-#include <winrt/Microsoft.ReactNative.h>
-#include <winrt/Microsoft.ReactNative.Cxx.h>
+#include "NativeModules.h"
 #include <string>
 
 namespace winrt::FreeKiosk::implementation {

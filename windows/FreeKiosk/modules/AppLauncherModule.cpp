@@ -1,7 +1,6 @@
 #include "pch.h"
 #include "AppLauncherModule.h"
 
-#include <winrt/Microsoft.ReactNative.h>
 #include <winrt/Windows.Foundation.Collections.h>
 
 #include <windows.h>

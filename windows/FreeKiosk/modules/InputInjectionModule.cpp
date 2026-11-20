@@ -1,7 +1,6 @@
 #include "pch.h"
 #include "InputInjectionModule.h"
 
-#include <winrt/Microsoft.ReactNative.h>
 
 #include <windows.h>
 

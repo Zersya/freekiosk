@@ -1,7 +1,6 @@
 #include "pch.h"
 #include "ScreenshotModule.h"
 
-#include <winrt/Microsoft.ReactNative.h>
 
 #include <windows.h>
 #include <gdiplus.h>

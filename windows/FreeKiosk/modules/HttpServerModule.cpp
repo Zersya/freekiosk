@@ -1,7 +1,6 @@
 #include "pch.h"
 #include "HttpServerModule.h"
 
-#include <winrt/Microsoft.ReactNative.h>
 #include <winrt/Windows.Foundation.Collections.h>
 
 namespace winrt::FreeKiosk::implementation {

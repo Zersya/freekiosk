@@ -1,7 +1,6 @@
 #include "pch.h"
 #include "TcpSocketModule.h"
 
-#include <winrt/Microsoft.ReactNative.h>
 
 namespace winrt::FreeKiosk::implementation {
 

@@ -1,7 +1,6 @@
 #include "pch.h"
 #include "FilePickerModule.h"
 
-#include <winrt/Microsoft.ReactNative.h>
 #include <winrt/Windows.Foundation.Collections.h>
 #include <winrt/Windows.Storage.Pickers.h>
 #include <winrt/Windows.Storage.h>

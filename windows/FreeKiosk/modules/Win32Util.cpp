@@ -1,7 +1,6 @@
 #include "pch.h"
 #include "Win32Util.h"
 
-#include <winrt/Microsoft.ReactNative.h>
 #include <winrt/Windows.Foundation.Collections.h>
 
 #include <tlhelp32.h>

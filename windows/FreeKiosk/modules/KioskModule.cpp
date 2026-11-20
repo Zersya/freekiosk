@@ -1,7 +1,6 @@
 #include "pch.h"
 #include "KioskModule.h"
 
-#include <winrt/Microsoft.ReactNative.h>
 #include <winrt/Windows.Foundation.Collections.h>
 #include <winrt/Windows.System.h>
 #include <winrt/Windows.System.Diagnostics.h>

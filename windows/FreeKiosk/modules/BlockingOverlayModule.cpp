@@ -1,7 +1,6 @@
 #include "pch.h"
 #include "BlockingOverlayModule.h"
 
-#include <winrt/Microsoft.ReactNative.h>
 #include <winrt/Windows.Foundation.Collections.h>
 
 #include <map>
