@@ -122,13 +122,13 @@ Source: [React Native Directory](https://reactnative.directory), queried 2026-11
 
 ## Recommended path
 
-1. **Windows MVP** — ✅ **COMPLETE**
+1. **Windows MVP** — ✅ **COMPLETE** (CI verified)
    - ✅ `windows/` project created with react-native-windows 0.82.8
    - ✅ `Platform.OS === 'windows'` guards for all NativeModules call sites
    - ✅ WebView, Media, Dashboard, PIN, Settings modes working
    - ✅ REST API and MQTT implemented in pure TypeScript
    - ✅ 13 C++ native modules for device control
-   - ✅ CI workflow for Windows builds
+   - ✅ CI workflow for Windows builds (`windows-2022` runner)
    - 📋 Shell Launcher / Assigned Access setup documented in [Windows](Windows)
 
 2. **Windows parity** — 🔄 **IN PROGRESS**
