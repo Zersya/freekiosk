@@ -2,13 +2,14 @@
 #include "SystemInfoModule.h"
 
 #include "NativeModules.h"
-#include "JSValue.h"
-
 #include <windows.h>
+#include <winsock2.h>
+#include <ws2tcpip.h>
 #include <iphlpapi.h>
 #include <lmcons.h>
 #include <sysinfoapi.h>
 
+#pragma comment(lib, "ws2_32.lib")
 #pragma comment(lib, "iphlpapi.lib")
 
 namespace winrt::FreeKiosk::implementation {
@@ -19,7 +20,7 @@ void SystemInfoModule::Initialize(winrt::Microsoft::ReactNative::ReactContext co
   m_reactContext = reactContext;
 }
 
-void SystemInfoModule::getDeviceInfo(ReactPromise<JSValueObject> promise) noexcept {
+void SystemInfoModule::getDeviceInfo(ReactPromise<JSValue> promise) noexcept {
   JSValueObject map;
   map["platform"] = JSValue(std::string("windows"));
   map["version"] = JSValue(std::string("1.0.0"));
@@ -31,36 +32,36 @@ void SystemInfoModule::getDeviceInfo(ReactPromise<JSValueObject> promise) noexce
     map["hostname"] = JSValue(std::string(hostname, size));
   }
 
-  promise.Resolve(map);
+  promise.Resolve(winrt::Microsoft::ReactNative::JSValue(std::move(map)));
 }
 
-void SystemInfoModule::getBatteryInfo(ReactPromise<JSValueObject> promise) noexcept {
+void SystemInfoModule::getBatteryInfo(ReactPromise<JSValue> promise) noexcept {
   SYSTEM_POWER_STATUS status;
   if (GetSystemPowerStatus(&status)) {
     JSValueObject map;
     map["level"] = JSValue((int)status.BatteryLifePercent);
     map["charging"] = JSValue(status.ACLineStatus == 1);
     map["temperature"] = JSValue(0);
-    promise.Resolve(map);
+    promise.Resolve(winrt::Microsoft::ReactNative::JSValue(std::move(map)));
   } else {
     promise.Resolve(JSValueObject());
   }
 }
 
-void SystemInfoModule::getStorageInfo(ReactPromise<JSValueObject> promise) noexcept {
+void SystemInfoModule::getStorageInfo(ReactPromise<JSValue> promise) noexcept {
   ULARGE_INTEGER freeBytesAvailable, totalBytes, totalFreeBytes;
   if (GetDiskFreeSpaceExA("C:\\", &freeBytesAvailable, &totalBytes, &totalFreeBytes)) {
     JSValueObject map;
     map["free"] = JSValue((double)freeBytesAvailable.QuadPart / (1024.0 * 1024.0 * 1024.0));
     map["total"] = JSValue((double)totalBytes.QuadPart / (1024.0 * 1024.0 * 1024.0));
     map["used"] = JSValue((double)(totalBytes.QuadPart - totalFreeBytes.QuadPart) / (1024.0 * 1024.0 * 1024.0));
-    promise.Resolve(map);
+    promise.Resolve(winrt::Microsoft::ReactNative::JSValue(std::move(map)));
   } else {
     promise.Resolve(JSValueObject());
   }
 }
 
-void SystemInfoModule::getMemoryInfo(ReactPromise<JSValueObject> promise) noexcept {
+void SystemInfoModule::getMemoryInfo(ReactPromise<JSValue> promise) noexcept {
   MEMORYSTATUSEX memInfo = {};
   memInfo.dwLength = sizeof(memInfo);
   if (GlobalMemoryStatusEx(&memInfo)) {
@@ -68,31 +69,31 @@ void SystemInfoModule::getMemoryInfo(ReactPromise<JSValueObject> promise) noexce
     map["free"] = JSValue((double)memInfo.ullAvailPhys / (1024.0 * 1024.0));
     map["total"] = JSValue((double)memInfo.ullTotalPhys / (1024.0 * 1024.0));
     map["used"] = JSValue((double)(memInfo.ullTotalPhys - memInfo.ullAvailPhys) / (1024.0 * 1024.0));
-    promise.Resolve(map);
+    promise.Resolve(winrt::Microsoft::ReactNative::JSValue(std::move(map)));
   } else {
     promise.Resolve(JSValueObject());
   }
 }
 
-void SystemInfoModule::getCpuInfo(ReactPromise<JSValueObject> promise) noexcept {
+void SystemInfoModule::getCpuInfo(ReactPromise<JSValue> promise) noexcept {
   JSValueObject map;
   map["usage"] = JSValue(0);
   map["cores"] = JSValue((int)GetActiveProcessorCount(ALL_PROCESSOR_GROUPS));
-  promise.Resolve(map);
+  promise.Resolve(winrt::Microsoft::ReactNative::JSValue(std::move(map)));
 }
 
-void SystemInfoModule::getNetworkInfo(ReactPromise<JSValueObject> promise) noexcept {
+void SystemInfoModule::getNetworkInfo(ReactPromise<JSValue> promise) noexcept {
   JSValueObject map;
   map["platform"] = JSValue(std::string("windows"));
-  promise.Resolve(map);
+  promise.Resolve(winrt::Microsoft::ReactNative::JSValue(std::move(map)));
 }
 
-void SystemInfoModule::getDisplayInfo(ReactPromise<JSValueObject> promise) noexcept {
+void SystemInfoModule::getDisplayInfo(ReactPromise<JSValue> promise) noexcept {
   JSValueObject map;
   map["width"] = JSValue((int)GetSystemMetrics(SM_CXSCREEN));
   map["height"] = JSValue((int)GetSystemMetrics(SM_CYSCREEN));
   map["dpi"] = JSValue((int)GetDpiForSystem());
-  promise.Resolve(map);
+  promise.Resolve(winrt::Microsoft::ReactNative::JSValue(std::move(map)));
 }
 
 void SystemInfoModule::getUptime(ReactPromise<int64_t> promise) noexcept {

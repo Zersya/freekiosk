@@ -14,10 +14,10 @@ void Win32UtilModule::Initialize(winrt::Microsoft::ReactNative::ReactContext con
   m_reactContext = reactContext;
 }
 
-void Win32UtilModule::getForegroundWindow(ReactPromise<JSValueObject> promise) noexcept {
+void Win32UtilModule::getForegroundWindow(ReactPromise<JSValue> promise) noexcept {
   JSValueObject map;
   map["hwnd"] = JSValue((int)GetForegroundWindow());
-  promise.Resolve(map);
+  promise.Resolve(winrt::Microsoft::ReactNative::JSValue(std::move(map)));
 }
 
 void Win32UtilModule::getWindowTitle(int hwnd, ReactPromise<std::string> promise) noexcept {
@@ -56,20 +56,20 @@ void Win32UtilModule::getProcessName(int pid, ReactPromise<std::string> promise)
   promise.Resolve(processName);
 }
 
-void Win32UtilModule::getScreenDimensions(ReactPromise<JSValueObject> promise) noexcept {
+void Win32UtilModule::getScreenDimensions(ReactPromise<JSValue> promise) noexcept {
   JSValueObject map;
   map["width"] = JSValue((int)GetSystemMetrics(SM_CXSCREEN));
   map["height"] = JSValue((int)GetSystemMetrics(SM_CYSCREEN));
-  promise.Resolve(map);
+  promise.Resolve(winrt::Microsoft::ReactNative::JSValue(std::move(map)));
 }
 
-void Win32UtilModule::getCursorPosition(ReactPromise<JSValueObject> promise) noexcept {
+void Win32UtilModule::getCursorPosition(ReactPromise<JSValue> promise) noexcept {
   POINT pt;
   GetCursorPos(&pt);
   JSValueObject map;
   map["x"] = JSValue(pt.x);
   map["y"] = JSValue(pt.y);
-  promise.Resolve(map);
+  promise.Resolve(winrt::Microsoft::ReactNative::JSValue(std::move(map)));
 }
 
 void Win32UtilModule::simulateKeyPress(int vkCode, bool keyDown, ReactPromise<void> promise) noexcept {

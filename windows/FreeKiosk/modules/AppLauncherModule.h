@@ -20,10 +20,10 @@ struct AppLauncherModule {
   void launchAppWithArgs(std::string packageName, std::string args, winrt::Microsoft::ReactNative::ReactPromise<void> promise) noexcept;
 
   REACT_METHOD(getInstalledApps)
-  void getInstalledApps(winrt::Microsoft::ReactNative::ReactPromise<winrt::Microsoft::ReactNative::JSValueObject> promise) noexcept;
+  void getInstalledApps(winrt::Microsoft::ReactNative::ReactPromise<winrt::Microsoft::ReactNative::JSValue> promise) noexcept;
 
   REACT_METHOD(getAppInfo)
-  void getAppInfo(std::string packageName, winrt::Microsoft::ReactNative::ReactPromise<winrt::Microsoft::ReactNative::JSValueObject> promise) noexcept;
+  void getAppInfo(std::string packageName, winrt::Microsoft::ReactNative::ReactPromise<winrt::Microsoft::ReactNative::JSValue> promise) noexcept;
 
   REACT_METHOD(isAppInstalled)
   void isAppInstalled(std::string packageName, winrt::Microsoft::ReactNative::ReactPromise<bool> promise) noexcept;
@@ -32,7 +32,7 @@ struct AppLauncherModule {
   void killApp(std::string packageName, winrt::Microsoft::ReactNative::ReactPromise<void> promise) noexcept;
 
   REACT_METHOD(getRunningApps)
-  void getRunningApps(winrt::Microsoft::ReactNative::ReactPromise<winrt::Microsoft::ReactNative::JSValueObject> promise) noexcept;
+  void getRunningApps(winrt::Microsoft::ReactNative::ReactPromise<winrt::Microsoft::ReactNative::JSValue> promise) noexcept;
 
   REACT_METHOD(setLaunchOnBoot)
   void setLaunchOnBoot(std::string packageName, bool enabled, winrt::Microsoft::ReactNative::ReactPromise<void> promise) noexcept;

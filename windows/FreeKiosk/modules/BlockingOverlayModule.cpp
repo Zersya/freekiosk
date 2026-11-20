@@ -45,7 +45,7 @@ void BlockingOverlayModule::clearOverlays(ReactPromise<void> promise) noexcept {
   promise.Resolve();
 }
 
-void BlockingOverlayModule::getOverlays(ReactPromise<JSValueObject> promise) noexcept {
+void BlockingOverlayModule::getOverlays(ReactPromise<JSValue> promise) noexcept {
   std::lock_guard<std::mutex> lock(g_overlaysMutex);
   JSValueObject result;
   JSValueArray overlays;
@@ -53,7 +53,7 @@ void BlockingOverlayModule::getOverlays(ReactPromise<JSValueObject> promise) noe
     overlays.push_back(JSValue(overlay.Copy()));
   }
   result["overlays"] = JSValue(std::move(overlays));
-  promise.Resolve(result);
+  promise.Resolve(winrt::Microsoft::ReactNative::JSValue(std::move(result)));
 }
 
 } // namespace winrt::FreeKiosk::implementation

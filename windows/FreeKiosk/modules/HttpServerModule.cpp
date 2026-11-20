@@ -24,11 +24,11 @@ void HttpServerModule::isRunning(ReactPromise<bool> promise) noexcept {
   promise.Resolve(false);
 }
 
-void HttpServerModule::getServerInfo(ReactPromise<JSValueObject> promise) noexcept {
+void HttpServerModule::getServerInfo(ReactPromise<JSValue> promise) noexcept {
   JSValueObject map;
   map["port"] = JSValue(8080);
   map["running"] = JSValue(false);
-  promise.Resolve(map);
+  promise.Resolve(winrt::Microsoft::ReactNative::JSValue(std::move(map)));
 }
 
 void HttpServerModule::getLocalIp(ReactPromise<std::string> promise) noexcept {

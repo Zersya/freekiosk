@@ -46,7 +46,7 @@ void KeychainModule::clear(ReactPromise<void> promise) noexcept {
   promise.Resolve();
 }
 
-void KeychainModule::getAllKeys(ReactPromise<JSValueObject> promise) noexcept {
+void KeychainModule::getAllKeys(ReactPromise<JSValue> promise) noexcept {
   std::lock_guard<std::mutex> lock(g_keychainMutex);
   JSValueObject result;
   JSValueArray keys;
@@ -54,7 +54,7 @@ void KeychainModule::getAllKeys(ReactPromise<JSValueObject> promise) noexcept {
     keys.push_back(JSValue(key));
   }
   result["keys"] = JSValue(std::move(keys));
-  promise.Resolve(result);
+  promise.Resolve(winrt::Microsoft::ReactNative::JSValue(std::move(result)));
 }
 
 } // namespace winrt::FreeKiosk::implementation

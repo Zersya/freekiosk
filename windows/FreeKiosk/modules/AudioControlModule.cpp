@@ -53,10 +53,10 @@ void AudioControlModule::setMute(bool muted, ReactPromise<void> promise) noexcep
   promise.Resolve();
 }
 
-void AudioControlModule::getAudioDevices(ReactPromise<JSValueObject> promise) noexcept {
+void AudioControlModule::getAudioDevices(ReactPromise<JSValue> promise) noexcept {
   JSValueObject result;
   result["devices"] = JSValue(JSValueArray());
-  promise.Resolve(result);
+  promise.Resolve(winrt::Microsoft::ReactNative::JSValue(std::move(result)));
 }
 
 void AudioControlModule::setAudioDevice(std::string deviceId, ReactPromise<void> promise) noexcept {

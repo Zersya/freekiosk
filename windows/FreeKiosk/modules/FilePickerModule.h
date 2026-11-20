@@ -17,7 +17,7 @@ struct FilePickerModule {
   void pickFile(std::string filter, winrt::Microsoft::ReactNative::ReactPromise<std::string> promise) noexcept;
 
   REACT_METHOD(pickFiles)
-  void pickFiles(std::string filter, winrt::Microsoft::ReactNative::ReactPromise<winrt::Microsoft::ReactNative::JSValueObject> promise) noexcept;
+  void pickFiles(std::string filter, winrt::Microsoft::ReactNative::ReactPromise<winrt::Microsoft::ReactNative::JSValue> promise) noexcept;
 
   REACT_METHOD(pickFolder)
   void pickFolder(winrt::Microsoft::ReactNative::ReactPromise<std::string> promise) noexcept;

@@ -19,10 +19,10 @@ void FilePickerModule::pickFile(std::string filter, ReactPromise<std::string> pr
   promise.Resolve("");
 }
 
-void FilePickerModule::pickFiles(std::string filter, ReactPromise<JSValueObject> promise) noexcept {
+void FilePickerModule::pickFiles(std::string filter, ReactPromise<JSValue> promise) noexcept {
   JSValueObject result;
   result["files"] = JSValue(JSValueArray());
-  promise.Resolve(result);
+  promise.Resolve(winrt::Microsoft::ReactNative::JSValue(std::move(result)));
 }
 
 void FilePickerModule::pickFolder(ReactPromise<std::string> promise) noexcept {
