@@ -4,7 +4,7 @@
  * Gère les commandes reçues et fournit le statut en temps réel
  */
 
-import { DeviceEventEmitter, NativeModules, NativeEventEmitter, Platform } from 'react-native';
+import { NativeModules, NativeEventEmitter, Platform } from 'react-native';
 import { httpServer } from './HttpServerModule';
 import { mqttClient } from './MqttModule';
 import { StorageService } from './storage';
@@ -62,6 +62,7 @@ class ApiServiceClass {
   private callbacks: ApiCallbacks = {};
   private eventEmitter: NativeEventEmitter | null = null;
   private commandSubscription: any = null;
+  private commandUnsubscribe: (() => void) | null = null;
   private appStatus: AppStatus = {
     currentUrl: '',
     canGoBack: false,
@@ -86,7 +87,13 @@ class ApiServiceClass {
 
     this.callbacks = callbacks;
 
-    if (Platform.OS === 'android' && HttpServerModule) {
+    if (Platform.OS === 'windows') {
+      // Windows: use TS implementation via httpServer.onCommand
+      this.commandUnsubscribe = httpServer.onCommand((command: string, params: Record<string, unknown>) => {
+        setTimeout(() => this.handleCommand({ command, params: JSON.stringify(params) }), 0);
+      });
+      console.log('ApiService: Initialized for Windows');
+    } else if (Platform.OS === 'android' && HttpServerModule) {
       this.eventEmitter = new NativeEventEmitter(HttpServerModule);
       
       // Listen for API commands from native module
@@ -341,16 +348,21 @@ class ApiServiceClass {
   updateStatus(status: Partial<AppStatus>): void {
     this.appStatus = { ...this.appStatus, ...status };
 
-    const statusJson = JSON.stringify(this.appStatus);
+    if (Platform.OS === 'windows') {
+      // Windows: use TS implementations
+      httpServer.updateStatus({ ...this.appStatus });
+      mqttClient.updateStatus({ ...this.appStatus });
+    } else {
+      // Android: use native modules
+      const statusJson = JSON.stringify(this.appStatus);
 
-    // Send to HTTP server native module
-    if (HttpServerModule?.updateStatus) {
-      HttpServerModule.updateStatus(statusJson);
-    }
+      if (HttpServerModule?.updateStatus) {
+        HttpServerModule.updateStatus(statusJson);
+      }
 
-    // Send to MQTT native module
-    if (MqttModule?.updateStatus) {
-      MqttModule.updateStatus(statusJson);
+      if (MqttModule?.updateStatus) {
+        MqttModule.updateStatus(statusJson);
+      }
     }
   }
 
@@ -368,6 +380,10 @@ class ApiServiceClass {
     if (this.commandSubscription) {
       this.commandSubscription.remove();
       this.commandSubscription = null;
+    }
+    if (this.commandUnsubscribe) {
+      this.commandUnsubscribe();
+      this.commandUnsubscribe = null;
     }
     this.isInitialized = false;
     console.log('ApiService: Destroyed');
