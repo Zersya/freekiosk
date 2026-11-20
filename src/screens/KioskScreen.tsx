@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
-import { View, StyleSheet, TouchableOpacity, TouchableWithoutFeedback, Text, NativeEventEmitter, NativeModules, AppState, DeviceEventEmitter, Dimensions, Pressable, BackHandler, Keyboard } from 'react-native';
+import { View, StyleSheet, TouchableOpacity, TouchableWithoutFeedback, Text, NativeEventEmitter, NativeModules, AppState, AppStateStatus, DeviceEventEmitter, Dimensions, Pressable, BackHandler, Keyboard } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import RNBrightness from '../utils/BrightnessModule';
 import { useIsFocused, useFocusEffect } from '@react-navigation/native';
@@ -33,6 +33,8 @@ import { revokeSettingsAccess } from '../utils/authState';
 import MaterialCommunityIcons from 'react-native-vector-icons/MaterialCommunityIcons';
 import MdmInstallerFab from '../components/MdmInstallerFab';
 import { mdmAgent } from '../utils/MdmAgentModule';
+
+import { IS_WINDOWS } from '../platform/windows/isWindows';
 
 const { HttpServerModule } = NativeModules;
 
@@ -228,7 +230,7 @@ const KioskScreen: React.FC<KioskScreenProps> = ({ navigation }) => {
 
   // AppState listener - detects when the app returns to the foreground
   useEffect(() => {
-    const subscription = AppState.addEventListener('change', async nextAppState => {
+    const handleAppStateChange = async (nextAppState: AppStateStatus) => {
       // App returned to foreground (from background or inactive state)
       if (appStateRef.current.match(/inactive|background/) && nextAppState === 'active') {
         // CRITICAL: Update appStateRef IMMEDIATELY before any async work
@@ -249,13 +251,13 @@ const KioskScreen: React.FC<KioskScreenProps> = ({ navigation }) => {
           console.log('[KioskScreen] AppState: skipping relaunch (screensaver active)');
           return;
         }
-        
+
         try {
           // CRITICAL: Read current mode from storage to avoid stale closure values
           // (user may have just switched from single→multi in settings)
           const currentExternalAppMode = await StorageService.getExternalAppMode();
           const currentDisplayMode = await StorageService.getDisplayMode();
-          
+
           // Multi-app mode: ALWAYS return to grid, never relaunch any specific app
           if (currentExternalAppMode === 'multi' && currentDisplayMode === 'external_app') {
             // Still clear voluntary return flag if set
@@ -268,29 +270,29 @@ const KioskScreen: React.FC<KioskScreenProps> = ({ navigation }) => {
             setCountdownActive(false); // Cancel any active countdown
             return;
           }
-          
+
           // === Single app mode logic below ===
-          
+
           // 1. First check the native flag (5-tap voluntary return)
           const shouldBlock = await KioskModule.shouldBlockAutoRelaunch();
-          
+
           if (shouldBlock) {
             // Clear the flag after reading it
             await KioskModule.clearBlockAutoRelaunch();
             setIsAppLaunched(false);
             return;
           }
-          
+
           // 2. Then check the back button mode
           // IMPORTANT: Read directly from storage to get the current value
           const currentBackButtonMode = await StorageService.getBackButtonMode();
-          
+
           if (currentBackButtonMode === 'test') {
             // Mode test: pas de relance auto
             setIsAppLaunched(false);
             return;
           }
-          
+
           if (currentBackButtonMode === 'timer') {
             // Mode timer: afficher countdown puis relancer
             const timerDelay = await StorageService.getBackButtonTimerDelay();
@@ -299,7 +301,7 @@ const KioskScreen: React.FC<KioskScreenProps> = ({ navigation }) => {
             setIsAppLaunched(false);
             return;
           }
-          
+
           // Mode immediate: relancer directement
           const currentPackage = await StorageService.getExternalAppPackage();
           if (currentDisplayMode === 'external_app' && currentPackage) {
@@ -314,10 +316,19 @@ const KioskScreen: React.FC<KioskScreenProps> = ({ navigation }) => {
       } else {
         appStateRef.current = nextAppState;
       }
-    });
+    };
+
+    const subscription = AppState.addEventListener('change', handleAppStateChange);
+    const winActivation = IS_WINDOWS
+      ? DeviceEventEmitter.addListener(
+          'onWindowAppStateChange',
+          (s: 'active' | 'background') => handleAppStateChange(s),
+        )
+      : null;
 
     return () => {
       subscription.remove();
+      winActivation?.remove();
       if (appLaunchTimeoutRef.current) {
         clearTimeout(appLaunchTimeoutRef.current);
       }
@@ -2708,8 +2719,8 @@ const KioskScreen: React.FC<KioskScreenProps> = ({ navigation }) => {
               urlFilterMode={urlFilterEnabled ? urlFilterMode : undefined}
               urlFilterPatterns={urlFilterEnabled ? urlFilterList : undefined}
               urlFilterShowFeedback={urlFilterShowFeedback}
-              pdfViewerEnabled={pdfViewerEnabled}
-              printEnabled={printEnabled}
+              pdfViewerEnabled={pdfViewerEnabled && !IS_WINDOWS}
+              printEnabled={printEnabled && !IS_WINDOWS}
               printPaperSize={printPaperSize}
               zoomLevel={zoomLevel}
               zoomMode={zoomMode}

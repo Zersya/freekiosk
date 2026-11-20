@@ -16,6 +16,7 @@ import {
   UrlListEditor,
 } from '../../../components/settings';
 import { Colors, Spacing, Typography } from '../../../theme';
+import { IS_WINDOWS } from '../../../platform/windows/isWindows';
 
 interface SecurityTabProps {
   displayMode: 'webview' | 'external_app' | 'media_player';
@@ -224,7 +225,7 @@ const SecurityTab: React.FC<SecurityTabProps> = ({
         )}
         
         {/* Power Button Setting - Only show when Lock Mode is enabled and Device Owner */}
-        {kioskEnabled && isDeviceOwner && (
+        {kioskEnabled && isDeviceOwner && !IS_WINDOWS && (
           <>
             <View style={styles.divider} />
             <SettingsSwitch
@@ -251,7 +252,7 @@ const SecurityTab: React.FC<SecurityTabProps> = ({
         )}
 
         {/* Block factory reset — Device Owner only, independent of Lock Mode (#201) */}
-        {isDeviceOwner && (
+        {isDeviceOwner && !IS_WINDOWS && (
           <>
             <View style={styles.divider} />
             <SettingsSwitch
@@ -287,7 +288,7 @@ const SecurityTab: React.FC<SecurityTabProps> = ({
         />
 
         {/* System screen-lock compatibility — Device Owner only (#199) */}
-        {isDeviceOwner && (
+        {isDeviceOwner && !IS_WINDOWS && (
           <>
             <View style={styles.divider} />
             <SettingsSwitch
@@ -408,6 +409,7 @@ const SecurityTab: React.FC<SecurityTabProps> = ({
           </>
         )}
         
+        {!IS_WINDOWS && (
         <>
           <View style={styles.divider} />
           <SettingsSwitch
@@ -419,6 +421,7 @@ const SecurityTab: React.FC<SecurityTabProps> = ({
             onValueChange={onVolumeUp5TapEnabledChange}
           />
         </>
+        )}
         
         <SettingsInfoBox variant="info">
           <Text style={styles.infoText}>
@@ -601,6 +604,7 @@ const SecurityTab: React.FC<SecurityTabProps> = ({
       )}
       
       {/* Lock Screen Controls */}
+      {!IS_WINDOWS && (
       <SettingsSection title="Lock Screen Controls" icon="lock">
         <SettingsSwitch
           label="Enable Lock Screen Controls"
@@ -672,6 +676,7 @@ const SecurityTab: React.FC<SecurityTabProps> = ({
           </>
         )}
       </SettingsSection>
+      )}
 
       {/* Return Mechanism Info - Always visible */}
       <SettingsSection variant="info">

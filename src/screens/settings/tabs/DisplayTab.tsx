@@ -18,6 +18,7 @@ import { Colors, Spacing, Typography } from '../../../theme';
 import { ScreenScheduleRule } from '../../../types/screenScheduler';
 import type { MediaItem } from '../../../types/mediaPlayer';
 import { getMediaDisplayName } from '../../../types/mediaPlayer';
+import { IS_WINDOWS } from '../../../platform/windows/isWindows';
 
 interface DisplayTabProps {
   displayMode: 'webview' | 'external_app' | 'media_player';
@@ -241,6 +242,8 @@ const DisplayTab: React.FC<DisplayTabProps> = ({
   return (
     <View>
       {/* App Brightness Control — shown in all display modes (MDM/API use system brightness) */}
+      {!IS_WINDOWS && (
+      <>
       <SettingsSection title="Brightness Control" icon="brightness-6">
         <SettingsSwitch
           label="App Brightness Control"
@@ -266,8 +269,8 @@ const DisplayTab: React.FC<DisplayTabProps> = ({
         <SettingsSection title="Manual Brightness" icon="brightness-6">
           <SettingsSlider
             label=""
-            hint={autoBrightnessEnabled 
-              ? "Disabled while auto-brightness is active" 
+            hint={autoBrightnessEnabled
+              ? "Disabled while auto-brightness is active"
               : "Screen brightness level (0% - 100%)"}
             value={defaultBrightness}
             onValueChange={onDefaultBrightnessChange}
@@ -285,7 +288,7 @@ const DisplayTab: React.FC<DisplayTabProps> = ({
           )}
         </SettingsSection>
       )}
-      
+
       {/* Auto-Brightness - WebView only, and only when app manages brightness */}
       {displayMode !== 'external_app' && brightnessManagementEnabled && (
         <SettingsSection title="Auto-Brightness" icon="brightness-auto">
@@ -296,7 +299,7 @@ const DisplayTab: React.FC<DisplayTabProps> = ({
             onValueChange={onAutoBrightnessEnabledChange}
             disabled={!hasLightSensor}
           />
-          
+
           {!hasLightSensor && (
             <SettingsInfoBox variant="error">
               <Text style={styles.infoText}>
@@ -304,7 +307,7 @@ const DisplayTab: React.FC<DisplayTabProps> = ({
               </Text>
             </SettingsInfoBox>
           )}
-          
+
           {hasLightSensor && autoBrightnessEnabled && (
             <>
               <SettingsSlider
@@ -321,7 +324,7 @@ const DisplayTab: React.FC<DisplayTabProps> = ({
                   { label: '20%', value: 0.2 },
                 ]}
               />
-              
+
               <SettingsSlider
                 label="Maximum Brightness"
                 hint="Highest brightness in bright conditions"
@@ -336,7 +339,7 @@ const DisplayTab: React.FC<DisplayTabProps> = ({
                   { label: '100%', value: 1.0 },
                 ]}
               />
-              
+
               <SettingsSlider
                 label="Brightness Offset"
                 hint="Added to calculated auto-brightness (e.g. +10% makes it always a bit brighter)"
@@ -351,7 +354,7 @@ const DisplayTab: React.FC<DisplayTabProps> = ({
                   { label: '+20%', value: 0.2 },
                 ]}
               />
-              
+
               <SettingsInfoBox variant="info">
                 <Text style={styles.infoText}>
                   💡 Current Light Level: {currentLightLevel.toFixed(1)} lux
@@ -360,6 +363,8 @@ const DisplayTab: React.FC<DisplayTabProps> = ({
             </>
           )}
         </SettingsSection>
+      )}
+      </>
       )}
       
       {/* Screen Always On - WebView mode only (external app mode: system manages screen) */}
@@ -561,6 +566,7 @@ const DisplayTab: React.FC<DisplayTabProps> = ({
               </View>
               
               {/* Motion Detection */}
+              {!IS_WINDOWS && (
               <View style={styles.subSection}>
                 <Text style={styles.subSectionTitle}>Motion Detection</Text>
                 <SettingsSwitch
@@ -569,7 +575,7 @@ const DisplayTab: React.FC<DisplayTabProps> = ({
                   value={motionEnabled}
                   onValueChange={onMotionEnabledChange}
                 />
-                
+
                 {motionEnabled && (
                   <>
                     <SettingsRadioGroup
@@ -591,7 +597,7 @@ const DisplayTab: React.FC<DisplayTabProps> = ({
                         </Text>
                       </SettingsInfoBox>
                     )}
-                    
+
                     {availableCameras.length === 1 && (
                       <SettingsInfoBox variant="info">
                         <Text style={styles.infoText}>
@@ -599,7 +605,7 @@ const DisplayTab: React.FC<DisplayTabProps> = ({
                         </Text>
                       </SettingsInfoBox>
                     )}
-                    
+
                     {availableCameras.length > 1 && (
                       <>
                         <SettingsRadioGroup
@@ -609,7 +615,7 @@ const DisplayTab: React.FC<DisplayTabProps> = ({
                           value={motionCameraPosition}
                           onValueChange={handleCameraPositionChange}
                         />
-                        
+
                         {!selectedCameraAvailable && (
                           <SettingsInfoBox variant="warning">
                             <Text style={styles.infoText}>
@@ -623,6 +629,7 @@ const DisplayTab: React.FC<DisplayTabProps> = ({
                   </>
                 )}
               </View>
+              )}
               
               {/* How it works */}
               <View style={styles.subSection}>
@@ -948,12 +955,14 @@ const DisplayTab: React.FC<DisplayTabProps> = ({
             value={pauseWebMediaWhenHidden}
             onValueChange={onPauseWebMediaWhenHiddenChange}
           />
+          {!IS_WINDOWS && (
           <SettingsSwitch
             label="🎙️ 2-way audio (intercom) mode"
             hint="Enable for WebRTC 2-way audio / talk-back (e.g. a Home Assistant / go2rtc doorbell intercom card). While the web page is actively using the microphone, TransKIOSK switches the device to communication audio mode so the microphone back-channel transmits, then restores normal audio when you stop talking. Leave off for normal browsing — it only engages while the mic is in use."
             value={intercomModeEnabled}
             onValueChange={onIntercomModeChange}
           />
+          )}
         </SettingsSection>
       )}
 

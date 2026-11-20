@@ -1,0 +1,46 @@
+name: Windows Build
+
+on:
+  push:
+    branches: [main, improvement, feature/windows-support]
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  windows:
+    runs-on: windows-2022
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Jest tests
+        run: npx jest __tests__/windows --passWithNoTests
+
+      - name: Enable sideloading
+        shell: pwsh
+        run: reg add "HKLM\SOFTWARE\Microsoft\Windows\CurrentVersion\AppModelUnlock" /t REG_DWORD /f /v AllowDevelopmentWithoutDevLicense /d 1
+
+      - name: Bundle JS for Windows
+        shell: pwsh
+        run: npx react-native bundle --platform windows --dev false --entry-file index.js --bundle-output "$env:RUNNER_TEMP\index.windows.bundle"
+
+      - name: Build and deploy
+        shell: pwsh
+        run: |
+          $attempts = 0
+          $success = $false
+          while ($attempts -lt 2 -and -not $success) {
+            $attempts++
+            npx react-native run-windows --release --arch x64 --no-packager --no-launch --singleproc --deploy-from-layout --no-telemetry --logging
+            if ($LASTEXITCODE -eq 0) { $success = $true }
+            elseif ($attempts -lt 2) { Write-Host "Build failed, retrying..." }
+          }
+          if (-not $success) { exit 1 }

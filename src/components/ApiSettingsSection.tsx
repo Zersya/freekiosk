@@ -28,6 +28,7 @@ import { mdmAgent } from '../utils/MdmAgentModule';
 import KioskModule from '../utils/KioskModule';
 import MdmEnrollmentQrScanner from './MdmEnrollmentQrScanner';
 import type { MdmEnrollmentQrPayload } from '../utils/mdmEnrollmentQr';
+import { IS_WINDOWS } from '../platform/windows/isWindows';
 
 interface ApiSettingsSectionProps {
   onSettingsChanged?: () => void;
@@ -540,6 +541,7 @@ export const ApiSettingsSection: React.FC<ApiSettingsSectionProps> = ({
           />
 
           {/* Remote Screenshot (MediaProjection) */}
+          {!IS_WINDOWS && (
           <SettingsSwitch
             label="Remote Screenshot (Full Screen)"
             value={remoteScreenshot}
@@ -557,6 +559,7 @@ export const ApiSettingsSection: React.FC<ApiSettingsSectionProps> = ({
                   : 'Enable for MDM Live View and full-screen remote screenshots.'
             }
           />
+          )}
 
           {/* API Endpoints Info */}
           <View style={styles.endpointsContainer}>

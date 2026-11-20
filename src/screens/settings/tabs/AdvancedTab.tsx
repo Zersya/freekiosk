@@ -16,6 +16,7 @@ import { ApiSettingsSection } from '../../../components/ApiSettingsSection';
 import { CertificateInfo } from '../../../utils/CertificateModule';
 import AccessibilityModule from '../../../utils/AccessibilityModule';
 import { Colors, Spacing, Typography } from '../../../theme';
+import { IS_WINDOWS } from '../../../platform/windows/isWindows';
 
 const { KioskModule } = NativeModules;
 
@@ -182,7 +183,7 @@ const AdvancedTab: React.FC<AdvancedTabProps> = ({
       )}
       
       {/* SSL Certificates - WebView only */}
-      {displayMode === 'webview' && (
+      {displayMode === 'webview' && !IS_WINDOWS && (
         <SettingsSection title="Accepted SSL Certificates" icon="certificate-outline">
           <Text style={styles.hint}>
             Self-signed certificates you've accepted. They expire after 1 year.
@@ -297,6 +298,7 @@ const AdvancedTab: React.FC<AdvancedTabProps> = ({
       <BackupRestoreSection onRestoreComplete={onRestoreComplete} />
 
       {/* Android System Settings */}
+      {!IS_WINDOWS && (
       <SettingsSection title="Android System Settings" icon="android">
         <Text style={styles.hint}>
           Open native Android settings to change WiFi, volume, display and more.
@@ -355,6 +357,7 @@ const AdvancedTab: React.FC<AdvancedTabProps> = ({
           </TouchableOpacity>
         </View>
       </SettingsSection>
+      )}
 
       {/* Actions */}
       <SettingsSection title="Actions" icon="cog-outline">

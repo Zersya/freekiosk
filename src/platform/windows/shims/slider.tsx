@@ -34,7 +34,7 @@ const Slider: React.FC<SliderProps> = ({
   disabled = false,
   testID,
 }) => {
-  const [trackWidth, setTrackWidth] = useState(0);
+  const [, setTrackWidth] = useState(0);
   const [currentValue, setCurrentValue] = useState(value);
   const trackWidthRef = useRef(0);
   const valueRef = useRef(value);

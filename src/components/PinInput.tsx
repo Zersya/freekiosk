@@ -7,6 +7,8 @@ import BluetoothDialog from './BluetoothDialog';
 import AudioOutputDialog from './AudioOutputDialog';
 import BrightnessDialog from './BrightnessDialog';
 
+import { IS_WINDOWS } from '../platform/windows/isWindows';
+
 const { KioskModule, AudioControlModule, FlashlightModule, RotationControlModule } = NativeModules;
 
 interface PinInputProps {
@@ -324,7 +326,7 @@ const PinInput: React.FC<PinInputProps> = ({ onSuccess }) => {
         </>
       )}
 
-      {hasQuickControls && (
+      {!IS_WINDOWS && hasQuickControls && (
         <View style={styles.quickControls}>
           {showWifiButton && (
             <TouchableOpacity style={styles.quickBtn} onPress={() => setWifiDialogVisible(true)}>
@@ -385,10 +387,14 @@ const PinInput: React.FC<PinInputProps> = ({ onSuccess }) => {
         </View>
       )}
 
-      <WifiDialog visible={wifiDialogVisible} onClose={() => setWifiDialogVisible(false)} />
-      <BluetoothDialog visible={bluetoothDialogVisible} onClose={() => setBluetoothDialogVisible(false)} />
-      <AudioOutputDialog visible={audioDialogVisible} onClose={() => setAudioDialogVisible(false)} />
-      <BrightnessDialog visible={brightnessDialogVisible} onClose={() => setBrightnessDialogVisible(false)} />
+      {!IS_WINDOWS && (
+        <>
+          <WifiDialog visible={wifiDialogVisible} onClose={() => setWifiDialogVisible(false)} />
+          <BluetoothDialog visible={bluetoothDialogVisible} onClose={() => setBluetoothDialogVisible(false)} />
+          <AudioOutputDialog visible={audioDialogVisible} onClose={() => setAudioDialogVisible(false)} />
+          <BrightnessDialog visible={brightnessDialogVisible} onClose={() => setBrightnessDialogVisible(false)} />
+        </>
+      )}
     </View>
   );
 };

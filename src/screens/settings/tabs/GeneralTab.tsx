@@ -25,6 +25,7 @@ import type { MediaItem, MediaFitMode } from '../../../types/mediaPlayer';
 import { generateMediaItemId, detectMediaType, isLocalMedia, getMediaDisplayName } from '../../../types/mediaPlayer';
 import FilePickerModule from '../../../utils/FilePickerModule';
 import type { PickedFile } from '../../../utils/FilePickerModule';
+import { IS_WINDOWS } from '../../../platform/windows/isWindows';
 
 interface GeneralTabProps {
   // Display mode
@@ -311,6 +312,7 @@ const GeneralTab: React.FC<GeneralTabProps> = ({
             </SettingsInfoBox>
             
             {/* Pick from device buttons */}
+            {!IS_WINDOWS && (
             <View style={styles.pickButtonsRow}>
               <TouchableOpacity
                 style={[styles.pickButton, pickingMedia && styles.pickButtonDisabled]}
@@ -336,6 +338,7 @@ const GeneralTab: React.FC<GeneralTabProps> = ({
                 <Text style={styles.pickButtonSmallText}>🖼️</Text>
               </TouchableOpacity>
             </View>
+            )}
             
             {mediaPlayerItems.map((item, index) => (
               <View key={item.id} style={styles.mediaItemCard}>
@@ -761,6 +764,7 @@ const GeneralTab: React.FC<GeneralTabProps> = ({
           )}
           
           {/* Overlay Permission */}
+          {!IS_WINDOWS && (
           <SettingsSection
             variant={hasOverlayPermission ? 'success' : 'warning'}
           >
@@ -776,7 +780,7 @@ const GeneralTab: React.FC<GeneralTabProps> = ({
                 </Text>
               </View>
             </View>
-            
+
             {!hasOverlayPermission && (
               <SettingsButton
                 title="Enable Permission"
@@ -785,8 +789,10 @@ const GeneralTab: React.FC<GeneralTabProps> = ({
               />
             )}
           </SettingsSection>
-          
+          )}
+
           {/* Usage Stats Permission - required for auto-relaunch monitoring */}
+          {!IS_WINDOWS && (
           <SettingsSection
             variant={hasUsageStatsPermission ? 'success' : 'warning'}
           >
@@ -802,7 +808,7 @@ const GeneralTab: React.FC<GeneralTabProps> = ({
                 </Text>
               </View>
             </View>
-            
+
             {!hasUsageStatsPermission && (
               <SettingsButton
                 title="Grant Usage Access"
@@ -811,6 +817,7 @@ const GeneralTab: React.FC<GeneralTabProps> = ({
               />
             )}
           </SettingsSection>
+          )}
         </>
       )}
       
@@ -925,7 +932,7 @@ const GeneralTab: React.FC<GeneralTabProps> = ({
       )}
       
       {/* PDF Viewer - WebView only */}
-      {displayMode === 'webview' && (
+      {displayMode === 'webview' && !IS_WINDOWS && (
         <SettingsSection title="PDF Viewer" icon="file-pdf-box">
           <SettingsSwitch
             label="Inline PDF Viewer"
@@ -933,7 +940,7 @@ const GeneralTab: React.FC<GeneralTabProps> = ({
             value={pdfViewerEnabled}
             onValueChange={onPdfViewerEnabledChange}
           />
-          
+
           {pdfViewerEnabled && (
             <SettingsInfoBox variant="info">
               <Text style={styles.infoText}>
@@ -946,7 +953,7 @@ const GeneralTab: React.FC<GeneralTabProps> = ({
       )}
       
       {/* Printing - WebView only */}
-      {displayMode === 'webview' && (
+      {displayMode === 'webview' && !IS_WINDOWS && (
         <SettingsSection title="Printing" icon="printer">
           <SettingsSwitch
             label="Allow Printing"
@@ -954,7 +961,7 @@ const GeneralTab: React.FC<GeneralTabProps> = ({
             value={printEnabled}
             onValueChange={onPrintEnabledChange}
           />
-          
+
           {printEnabled && (
             <>
               <View style={styles.rotationSpacer} />
@@ -1037,7 +1044,7 @@ const GeneralTab: React.FC<GeneralTabProps> = ({
       )}
       
       {/* Background Apps - WebView mode only */}
-      {displayMode === 'webview' && (
+      {displayMode === 'webview' && !IS_WINDOWS && (
         <SettingsSection title="Background Apps" icon="apps">
           <SettingsInfoBox variant="info">
             <Text style={styles.infoText}>

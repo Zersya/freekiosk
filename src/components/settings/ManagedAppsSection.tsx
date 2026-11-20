@@ -21,6 +21,7 @@ import { ManagedApp, createManagedApp, isValidPackageName } from '../../types/ma
 import AppLauncherModule, { AppInfoAll } from '../../utils/AppLauncherModule';
 import { Colors, Spacing, Typography } from '../../theme';
 import Icon from '../Icon';
+import { IS_WINDOWS } from '../../platform/windows/isWindows';
 
 interface ManagedAppsSectionProps {
   managedApps: ManagedApp[];
@@ -141,6 +142,7 @@ const ManagedAppsSection: React.FC<ManagedAppsSectionProps> = ({
             value={app.launchOnBoot}
             onToggle={() => handleToggle(app.packageName, 'launchOnBoot')}
           />
+          {!IS_WINDOWS && (
           <ToggleRow
             label="Keep Alive"
             hint="Monitor and restart if the app closes or crashes"
@@ -148,7 +150,8 @@ const ManagedAppsSection: React.FC<ManagedAppsSectionProps> = ({
             value={app.keepAlive}
             onToggle={() => handleToggle(app.packageName, 'keepAlive')}
           />
-          {isDeviceOwner && (
+          )}
+          {isDeviceOwner && !IS_WINDOWS && (
             <ToggleRow
               label="Allow Accessibility"
               hint="Permit this app's accessibility services"
