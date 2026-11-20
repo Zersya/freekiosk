@@ -2,7 +2,6 @@
 #include "Win32Util.h"
 
 #include "NativeModules.h"
-#include "JSValue.h"
 
 #include <tlhelp32.h>
 
@@ -14,10 +13,10 @@ void Win32UtilModule::Initialize(winrt::Microsoft::ReactNative::ReactContext con
   m_reactContext = reactContext;
 }
 
-void Win32UtilModule::getForegroundWindow(ReactPromise<JSValue> promise) noexcept {
-  JSValueObject map;
-  map["hwnd"] = JSValue((int)GetForegroundWindow());
-  promise.Resolve(winrt::Microsoft::ReactNative::JSValue(std::move(map)));
+void Win32UtilModule::getForegroundWindow(ReactPromise<std::map<std::string, std::string>> promise) noexcept {
+  std::map<std::string, std::string> result;
+  result["hwnd"] = std::to_string((int)GetForegroundWindow());
+  promise.Resolve(result);
 }
 
 void Win32UtilModule::getWindowTitle(int hwnd, ReactPromise<std::string> promise) noexcept {
@@ -46,7 +45,12 @@ void Win32UtilModule::getProcessName(int pid, ReactPromise<std::string> promise)
   if (Process32First(hSnapshot, &pe32)) {
     do {
       if (pe32.th32ProcessID == pid) {
-        processName = pe32.szExeFile;
+        // Convert WCHAR to UTF-8
+        int len = WideCharToMultiByte(CP_UTF8, 0, pe32.szExeFile, -1, nullptr, 0, nullptr, nullptr);
+        processName.resize(len > 0 ? len - 1 : 0);
+        if (len > 0) {
+          WideCharToMultiByte(CP_UTF8, 0, pe32.szExeFile, -1, processName.data(), len, nullptr, nullptr);
+        }
         break;
       }
     } while (Process32Next(hSnapshot, &pe32));
@@ -56,20 +60,20 @@ void Win32UtilModule::getProcessName(int pid, ReactPromise<std::string> promise)
   promise.Resolve(processName);
 }
 
-void Win32UtilModule::getScreenDimensions(ReactPromise<JSValue> promise) noexcept {
-  JSValueObject map;
-  map["width"] = JSValue((int)GetSystemMetrics(SM_CXSCREEN));
-  map["height"] = JSValue((int)GetSystemMetrics(SM_CYSCREEN));
-  promise.Resolve(winrt::Microsoft::ReactNative::JSValue(std::move(map)));
+void Win32UtilModule::getScreenDimensions(ReactPromise<std::map<std::string, std::string>> promise) noexcept {
+  std::map<std::string, std::string> result;
+  result["width"] = std::to_string((int)GetSystemMetrics(SM_CXSCREEN));
+  result["height"] = std::to_string((int)GetSystemMetrics(SM_CYSCREEN));
+  promise.Resolve(result);
 }
 
-void Win32UtilModule::getCursorPosition(ReactPromise<JSValue> promise) noexcept {
+void Win32UtilModule::getCursorPosition(ReactPromise<std::map<std::string, std::string>> promise) noexcept {
   POINT pt;
   GetCursorPos(&pt);
-  JSValueObject map;
-  map["x"] = JSValue(pt.x);
-  map["y"] = JSValue(pt.y);
-  promise.Resolve(winrt::Microsoft::ReactNative::JSValue(std::move(map)));
+  std::map<std::string, std::string> result;
+  result["x"] = std::to_string(pt.x);
+  result["y"] = std::to_string(pt.y);
+  promise.Resolve(result);
 }
 
 void Win32UtilModule::simulateKeyPress(int vkCode, bool keyDown, ReactPromise<void> promise) noexcept {

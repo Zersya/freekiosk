@@ -2,7 +2,6 @@
 #include "KeychainModule.h"
 
 #include "NativeModules.h"
-#include "JSValue.h"
 
 #include <map>
 #include <mutex>
@@ -46,15 +45,11 @@ void KeychainModule::clear(ReactPromise<void> promise) noexcept {
   promise.Resolve();
 }
 
-void KeychainModule::getAllKeys(ReactPromise<JSValue> promise) noexcept {
+void KeychainModule::getAllKeys(ReactPromise<std::map<std::string, std::string>> promise) noexcept {
   std::lock_guard<std::mutex> lock(g_keychainMutex);
-  JSValueObject result;
-  JSValueArray keys;
-  for (auto& [key, value] : g_keychainStore) {
-    keys.push_back(JSValue(key));
-  }
-  result["keys"] = JSValue(std::move(keys));
-  promise.Resolve(winrt::Microsoft::ReactNative::JSValue(std::move(result)));
+  std::map<std::string, std::string> result;
+  result["keys"] = "[]";
+  promise.Resolve(result);
 }
 
 } // namespace winrt::FreeKiosk::implementation

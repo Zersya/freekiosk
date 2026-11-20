@@ -2,7 +2,6 @@
 #include "HttpServerModule.h"
 
 #include "NativeModules.h"
-#include "JSValue.h"
 
 namespace winrt::FreeKiosk::implementation {
 
@@ -24,11 +23,11 @@ void HttpServerModule::isRunning(ReactPromise<bool> promise) noexcept {
   promise.Resolve(false);
 }
 
-void HttpServerModule::getServerInfo(ReactPromise<JSValue> promise) noexcept {
-  JSValueObject map;
-  map["port"] = JSValue(8080);
-  map["running"] = JSValue(false);
-  promise.Resolve(winrt::Microsoft::ReactNative::JSValue(std::move(map)));
+void HttpServerModule::getServerInfo(ReactPromise<std::map<std::string, std::string>> promise) noexcept {
+  std::map<std::string, std::string> result;
+  result["port"] = "8080";
+  result["running"] = "false";
+  promise.Resolve(result);
 }
 
 void HttpServerModule::getLocalIp(ReactPromise<std::string> promise) noexcept {

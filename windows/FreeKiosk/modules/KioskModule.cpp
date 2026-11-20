@@ -1,11 +1,7 @@
 #include "pch.h"
 #include "KioskModule.h"
 
-#include <winrt/Windows.Foundation.Collections.h>
-#include <winrt/Windows.System.h>
-#include <winrt/Windows.System.Diagnostics.h>
-#include <winrt/Windows.Storage.h>
-#include <winrt/Windows.UI.Notifications.h>
+#include "NativeModules.h"
 
 #include <windows.h>
 #include <shellapi.h>
@@ -15,6 +11,7 @@
 #include <lmcons.h>
 #include <fstream>
 #include <filesystem>
+#include <chrono>
 
 #pragma comment(lib, "winmm.lib")
 #pragma comment(lib, "powrprof.lib")
@@ -22,20 +19,14 @@
 
 namespace winrt::FreeKiosk::implementation {
 
-using namespace winrt;
-using namespace Windows::Foundation;
-using namespace Windows::Foundation::Collections;
-using namespace Windows::System;
-using namespace Windows::System::Diagnostics;
-using namespace Windows::Storage;
-using namespace Windows::UI::Notifications;
+using namespace winrt::Microsoft::ReactNative;
 
 void KioskModule::Initialize(winrt::Microsoft::ReactNative::ReactContext const &reactContext) noexcept {
   m_reactContext = reactContext;
 }
 
 // Screen control
-void KioskModule::setScreenOn(bool on, winrt::Microsoft::ReactNative::ReactPromise<void> promise) noexcept {
+void KioskModule::setScreenOn(bool on, ReactPromise<void> promise) noexcept {
   if (on) {
     SetThreadExecutionState(ES_DISPLAY_REQUIRED | ES_CONTINUOUS);
   } else {
@@ -44,22 +35,22 @@ void KioskModule::setScreenOn(bool on, winrt::Microsoft::ReactNative::ReactPromi
   promise.Resolve();
 }
 
-void KioskModule::getScreenOn(winrt::Microsoft::ReactNative::ReactPromise<bool> promise) noexcept {
+void KioskModule::getScreenOn(ReactPromise<bool> promise) noexcept {
   promise.Resolve(true);
 }
 
 // Brightness control
-void KioskModule::getBrightness(winrt::Microsoft::ReactNative::ReactPromise<int> promise) noexcept {
+void KioskModule::getBrightness(ReactPromise<int> promise) noexcept {
   promise.Resolve(50);
 }
 
-void KioskModule::setBrightness(int level, winrt::Microsoft::ReactNative::ReactPromise<void> promise) noexcept {
+void KioskModule::setBrightness(int level, ReactPromise<void> promise) noexcept {
   level = std::max(0, std::min(100, level));
   promise.Resolve();
 }
 
 // Volume control
-void KioskModule::getVolume(winrt::Microsoft::ReactNative::ReactPromise<int> promise) noexcept {
+void KioskModule::getVolume(ReactPromise<int> promise) noexcept {
   HWAVEOUT hWaveOut;
   if (waveOutOpen(&hWaveOut, WAVE_MAPPER, nullptr, 0, 0, CALLBACK_NULL) == MMSYSERR_NOERROR) {
     DWORD volume = 0;
@@ -72,7 +63,7 @@ void KioskModule::getVolume(winrt::Microsoft::ReactNative::ReactPromise<int> pro
   }
 }
 
-void KioskModule::setVolume(int level, winrt::Microsoft::ReactNative::ReactPromise<void> promise) noexcept {
+void KioskModule::setVolume(int level, ReactPromise<void> promise) noexcept {
   level = std::max(0, std::min(100, level));
   DWORD volume = (level * 0xFFFF) / 100;
   volume = (volume << 16) | volume;
@@ -88,121 +79,121 @@ void KioskModule::setVolume(int level, winrt::Microsoft::ReactNative::ReactPromi
 }
 
 // Kiosk mode
-void KioskModule::setKioskMode(bool enabled, winrt::Microsoft::ReactNative::ReactPromise<void> promise) noexcept {
+void KioskModule::setKioskMode(bool enabled, ReactPromise<void> promise) noexcept {
   promise.Resolve();
 }
 
-void KioskModule::isKioskModeEnabled(winrt::Microsoft::ReactNative::ReactPromise<bool> promise) noexcept {
+void KioskModule::isKioskModeEnabled(ReactPromise<bool> promise) noexcept {
   promise.Resolve(false);
 }
 
-void KioskModule::startLockTask(std::string packageName, winrt::Microsoft::ReactNative::ReactPromise<void> promise) noexcept {
+void KioskModule::startLockTask(std::string packageName, ReactPromise<void> promise) noexcept {
   promise.Resolve();
 }
 
-void KioskModule::stopLockTask(winrt::Microsoft::ReactNative::ReactPromise<void> promise) noexcept {
+void KioskModule::stopLockTask(ReactPromise<void> promise) noexcept {
   promise.Resolve();
 }
 
-void KioskModule::isInLockTaskMode(winrt::Microsoft::ReactNative::ReactPromise<bool> promise) noexcept {
+void KioskModule::isInLockTaskMode(ReactPromise<bool> promise) noexcept {
   promise.Resolve(false);
 }
 
 // App control
-void KioskModule::launchApp(std::string packageName, winrt::Microsoft::ReactNative::ReactPromise<void> promise) noexcept {
+void KioskModule::launchApp(std::string packageName, ReactPromise<void> promise) noexcept {
   ShellExecuteA(nullptr, "open", packageName.c_str(), nullptr, nullptr, SW_SHOWNORMAL);
   promise.Resolve();
 }
 
-void KioskModule::launchUrl(std::string url, winrt::Microsoft::ReactNative::ReactPromise<void> promise) noexcept {
+void KioskModule::launchUrl(std::string url, ReactPromise<void> promise) noexcept {
   ShellExecuteA(nullptr, "open", url.c_str(), nullptr, nullptr, SW_SHOWNORMAL);
   promise.Resolve();
 }
 
-void KioskModule::launchFile(std::string path, winrt::Microsoft::ReactNative::ReactPromise<void> promise) noexcept {
+void KioskModule::launchFile(std::string path, ReactPromise<void> promise) noexcept {
   ShellExecuteA(nullptr, "open", path.c_str(), nullptr, nullptr, SW_SHOWNORMAL);
   promise.Resolve();
 }
 
 // System info
-void KioskModule::getDeviceInfo(winrt::Microsoft::ReactNative::ReactPromise<winrt::Microsoft::ReactNative::JSValue> promise) noexcept {
-  winrt::Microsoft::ReactNative::JSValueObject map;
-  map["platform"] = winrt::Microsoft::ReactNative::JSValue(std::string("windows"));
-  map["version"] = winrt::Microsoft::ReactNative::JSValue(std::string("1.0.0"));
-  map["buildNumber"] = winrt::Microsoft::ReactNative::JSValue(1);
-  promise.Resolve(winrt::Microsoft::ReactNative::JSValue(std::move(map)));
+void KioskModule::getDeviceInfo(ReactPromise<std::map<std::string, std::string>> promise) noexcept {
+  std::map<std::string, std::string> result;
+  result["platform"] = "windows";
+  result["version"] = "1.0.0";
+  result["buildNumber"] = "1";
+  promise.Resolve(result);
 }
 
-void KioskModule::getBatteryInfo(winrt::Microsoft::ReactNative::ReactPromise<winrt::Microsoft::ReactNative::JSValue> promise) noexcept {
+void KioskModule::getBatteryInfo(ReactPromise<std::map<std::string, std::string>> promise) noexcept {
   SYSTEM_POWER_STATUS status;
   if (GetSystemPowerStatus(&status)) {
-    winrt::Microsoft::ReactNative::JSValueObject map;
-    map["level"] = winrt::Microsoft::ReactNative::JSValue((int)status.BatteryLifePercent);
-    map["charging"] = winrt::Microsoft::ReactNative::JSValue(status.ACLineStatus == 1);
-    promise.Resolve(winrt::Microsoft::ReactNative::JSValue(std::move(map)));
+    std::map<std::string, std::string> result;
+    result["level"] = std::to_string((int)status.BatteryLifePercent);
+    result["charging"] = status.ACLineStatus == 1 ? "true" : "false";
+    promise.Resolve(result);
   } else {
-    promise.Resolve(winrt::Microsoft::ReactNative::JSValue(winrt::Microsoft::ReactNative::JSValueObject()));
+    promise.Resolve(std::map<std::string, std::string>());
   }
 }
 
-void KioskModule::getStorageInfo(winrt::Microsoft::ReactNative::ReactPromise<winrt::Microsoft::ReactNative::JSValue> promise) noexcept {
+void KioskModule::getStorageInfo(ReactPromise<std::map<std::string, std::string>> promise) noexcept {
   ULARGE_INTEGER freeBytesAvailable, totalBytes, totalFreeBytes;
   if (GetDiskFreeSpaceExA("C:\\", &freeBytesAvailable, &totalBytes, &totalFreeBytes)) {
-    winrt::Microsoft::ReactNative::JSValueObject map;
-    map["free"] = winrt::Microsoft::ReactNative::JSValue((double)freeBytesAvailable.QuadPart / (1024.0 * 1024.0 * 1024.0));
-    map["total"] = winrt::Microsoft::ReactNative::JSValue((double)totalBytes.QuadPart / (1024.0 * 1024.0 * 1024.0));
-    promise.Resolve(winrt::Microsoft::ReactNative::JSValue(std::move(map)));
+    std::map<std::string, std::string> result;
+    result["free"] = std::to_string((double)freeBytesAvailable.QuadPart / (1024.0 * 1024.0 * 1024.0));
+    result["total"] = std::to_string((double)totalBytes.QuadPart / (1024.0 * 1024.0 * 1024.0));
+    promise.Resolve(result);
   } else {
-    promise.Resolve(winrt::Microsoft::ReactNative::JSValue(winrt::Microsoft::ReactNative::JSValueObject()));
+    promise.Resolve(std::map<std::string, std::string>());
   }
 }
 
 // Window control
-void KioskModule::setAlwaysOnTop(bool enabled, winrt::Microsoft::ReactNative::ReactPromise<void> promise) noexcept {
+void KioskModule::setAlwaysOnTop(bool enabled, ReactPromise<void> promise) noexcept {
   promise.Resolve();
 }
 
-void KioskModule::setFullScreen(bool enabled, winrt::Microsoft::ReactNative::ReactPromise<void> promise) noexcept {
+void KioskModule::setFullScreen(bool enabled, ReactPromise<void> promise) noexcept {
   promise.Resolve();
 }
 
-void KioskModule::minimize(winrt::Microsoft::ReactNative::ReactPromise<void> promise) noexcept {
+void KioskModule::minimize(ReactPromise<void> promise) noexcept {
   promise.Resolve();
 }
 
-void KioskModule::maximize(winrt::Microsoft::ReactNative::ReactPromise<void> promise) noexcept {
+void KioskModule::maximize(ReactPromise<void> promise) noexcept {
   promise.Resolve();
 }
 
-void KioskModule::restore(winrt::Microsoft::ReactNative::ReactPromise<void> promise) noexcept {
+void KioskModule::restore(ReactPromise<void> promise) noexcept {
   promise.Resolve();
 }
 
-void KioskModule::close(winrt::Microsoft::ReactNative::ReactPromise<void> promise) noexcept {
+void KioskModule::close(ReactPromise<void> promise) noexcept {
   promise.Resolve();
 }
 
 // Power management
-void KioskModule::shutdown(winrt::Microsoft::ReactNative::ReactPromise<void> promise) noexcept {
+void KioskModule::shutdown(ReactPromise<void> promise) noexcept {
   promise.Resolve();
 }
 
-void KioskModule::restart(winrt::Microsoft::ReactNative::ReactPromise<void> promise) noexcept {
+void KioskModule::restart(ReactPromise<void> promise) noexcept {
   promise.Resolve();
 }
 
-void KioskModule::sleep(winrt::Microsoft::ReactNative::ReactPromise<void> promise) noexcept {
+void KioskModule::sleep(ReactPromise<void> promise) noexcept {
   SetSuspendState(FALSE, FALSE, FALSE);
   promise.Resolve();
 }
 
-void KioskModule::hibernate(winrt::Microsoft::ReactNative::ReactPromise<void> promise) noexcept {
+void KioskModule::hibernate(ReactPromise<void> promise) noexcept {
   SetSuspendState(TRUE, FALSE, FALSE);
   promise.Resolve();
 }
 
 // Input injection
-void KioskModule::sendKey(int vkCode, bool keyDown, winrt::Microsoft::ReactNative::ReactPromise<void> promise) noexcept {
+void KioskModule::sendKey(int vkCode, bool keyDown, ReactPromise<void> promise) noexcept {
   INPUT input = {};
   input.type = INPUT_KEYBOARD;
   input.ki.wVk = (WORD)vkCode;
@@ -211,7 +202,7 @@ void KioskModule::sendKey(int vkCode, bool keyDown, winrt::Microsoft::ReactNativ
   promise.Resolve();
 }
 
-void KioskModule::sendMouseClick(int x, int y, int button, winrt::Microsoft::ReactNative::ReactPromise<void> promise) noexcept {
+void KioskModule::sendMouseClick(int x, int y, int button, ReactPromise<void> promise) noexcept {
   SetCursorPos(x, y);
   INPUT input = {};
   input.type = INPUT_MOUSE;
@@ -220,12 +211,12 @@ void KioskModule::sendMouseClick(int x, int y, int button, winrt::Microsoft::Rea
   promise.Resolve();
 }
 
-void KioskModule::sendMouseMove(int x, int y, winrt::Microsoft::ReactNative::ReactPromise<void> promise) noexcept {
+void KioskModule::sendMouseMove(int x, int y, ReactPromise<void> promise) noexcept {
   SetCursorPos(x, y);
   promise.Resolve();
 }
 
-void KioskModule::sendText(std::string text, winrt::Microsoft::ReactNative::ReactPromise<void> promise) noexcept {
+void KioskModule::sendText(std::string text, ReactPromise<void> promise) noexcept {
   for (char c : text) {
     INPUT input = {};
     input.type = INPUT_KEYBOARD;
@@ -240,7 +231,7 @@ void KioskModule::sendText(std::string text, winrt::Microsoft::ReactNative::Reac
 }
 
 // Clipboard
-void KioskModule::getClipboardText(winrt::Microsoft::ReactNative::ReactPromise<std::string> promise) noexcept {
+void KioskModule::getClipboardText(ReactPromise<std::string> promise) noexcept {
   if (!OpenClipboard(nullptr)) {
     promise.Reject("Failed to open clipboard");
     return;
@@ -259,7 +250,7 @@ void KioskModule::getClipboardText(winrt::Microsoft::ReactNative::ReactPromise<s
   }
 }
 
-void KioskModule::setClipboardText(std::string text, winrt::Microsoft::ReactNative::ReactPromise<void> promise) noexcept {
+void KioskModule::setClipboardText(std::string text, ReactPromise<void> promise) noexcept {
   if (!OpenClipboard(nullptr)) {
     promise.Reject("Failed to open clipboard");
     return;
@@ -278,16 +269,16 @@ void KioskModule::setClipboardText(std::string text, winrt::Microsoft::ReactNati
 }
 
 // Notifications
-void KioskModule::showNotification(std::string title, std::string message, winrt::Microsoft::ReactNative::ReactPromise<void> promise) noexcept {
+void KioskModule::showNotification(std::string title, std::string message, ReactPromise<void> promise) noexcept {
   promise.Resolve();
 }
 
-void KioskModule::hideNotification(winrt::Microsoft::ReactNative::ReactPromise<void> promise) noexcept {
+void KioskModule::hideNotification(ReactPromise<void> promise) noexcept {
   promise.Resolve();
 }
 
 // File operations
-void KioskModule::readFile(std::string path, winrt::Microsoft::ReactNative::ReactPromise<std::string> promise) noexcept {
+void KioskModule::readFile(std::string path, ReactPromise<std::string> promise) noexcept {
   std::ifstream file(path, std::ios::binary);
   if (!file.is_open()) {
     promise.Reject(("Failed to open file: " + path).c_str());
@@ -299,7 +290,7 @@ void KioskModule::readFile(std::string path, winrt::Microsoft::ReactNative::Reac
   promise.Resolve(content);
 }
 
-void KioskModule::writeFile(std::string path, std::string content, winrt::Microsoft::ReactNative::ReactPromise<void> promise) noexcept {
+void KioskModule::writeFile(std::string path, std::string content, ReactPromise<void> promise) noexcept {
   std::ofstream file(path, std::ios::binary | std::ios::trunc);
   if (!file.is_open()) {
     promise.Reject(("Failed to open file for writing: " + path).c_str());
@@ -311,11 +302,11 @@ void KioskModule::writeFile(std::string path, std::string content, winrt::Micros
   promise.Resolve();
 }
 
-void KioskModule::fileExists(std::string path, winrt::Microsoft::ReactNative::ReactPromise<bool> promise) noexcept {
+void KioskModule::fileExists(std::string path, ReactPromise<bool> promise) noexcept {
   promise.Resolve(std::filesystem::exists(path));
 }
 
-void KioskModule::deleteFile(std::string path, winrt::Microsoft::ReactNative::ReactPromise<void> promise) noexcept {
+void KioskModule::deleteFile(std::string path, ReactPromise<void> promise) noexcept {
   try {
     std::filesystem::remove(path);
     promise.Resolve();
@@ -325,22 +316,22 @@ void KioskModule::deleteFile(std::string path, winrt::Microsoft::ReactNative::Re
 }
 
 // Registry
-void KioskModule::getRegistryValue(std::string keyPath, winrt::Microsoft::ReactNative::ReactPromise<std::string> promise) noexcept {
+void KioskModule::getRegistryValue(std::string keyPath, ReactPromise<std::string> promise) noexcept {
   promise.Resolve("");
 }
 
-void KioskModule::setRegistryValue(std::string keyPath, std::string value, winrt::Microsoft::ReactNative::ReactPromise<void> promise) noexcept {
+void KioskModule::setRegistryValue(std::string keyPath, std::string value, ReactPromise<void> promise) noexcept {
   promise.Resolve();
 }
 
 // Process control
-void KioskModule::getProcessList(winrt::Microsoft::ReactNative::ReactPromise<winrt::Microsoft::ReactNative::JSValue> promise) noexcept {
-  winrt::Microsoft::ReactNative::JSValueObject result;
-  result["processes"] = winrt::Microsoft::ReactNative::JSValue(winrt::Microsoft::ReactNative::JSValueArray());
-  promise.Resolve(winrt::Microsoft::ReactNative::JSValue(std::move(result)));
+void KioskModule::getProcessList(ReactPromise<std::map<std::string, std::string>> promise) noexcept {
+  std::map<std::string, std::string> result;
+  result["processes"] = "[]";
+  promise.Resolve(result);
 }
 
-void KioskModule::killProcess(int pid, winrt::Microsoft::ReactNative::ReactPromise<void> promise) noexcept {
+void KioskModule::killProcess(int pid, ReactPromise<void> promise) noexcept {
   HANDLE hProcess = OpenProcess(PROCESS_TERMINATE, FALSE, pid);
   if (hProcess) {
     TerminateProcess(hProcess, 0);
@@ -351,23 +342,23 @@ void KioskModule::killProcess(int pid, winrt::Microsoft::ReactNative::ReactPromi
   }
 }
 
-void KioskModule::getProcessInfo(int pid, winrt::Microsoft::ReactNative::ReactPromise<winrt::Microsoft::ReactNative::JSValue> promise) noexcept {
-  promise.Resolve(winrt::Microsoft::ReactNative::JSValue(winrt::Microsoft::ReactNative::JSValueObject()));
+void KioskModule::getProcessInfo(int pid, ReactPromise<std::map<std::string, std::string>> promise) noexcept {
+  promise.Resolve(std::map<std::string, std::string>());
 }
 
 // Network
-void KioskModule::getNetworkInfo(winrt::Microsoft::ReactNative::ReactPromise<winrt::Microsoft::ReactNative::JSValue> promise) noexcept {
-  winrt::Microsoft::ReactNative::JSValueObject map;
-  map["platform"] = winrt::Microsoft::ReactNative::JSValue(std::string("windows"));
-  promise.Resolve(winrt::Microsoft::ReactNative::JSValue(std::move(map)));
+void KioskModule::getNetworkInfo(ReactPromise<std::map<std::string, std::string>> promise) noexcept {
+  std::map<std::string, std::string> result;
+  result["platform"] = "windows";
+  promise.Resolve(result);
 }
 
-void KioskModule::getWifiInfo(winrt::Microsoft::ReactNative::ReactPromise<winrt::Microsoft::ReactNative::JSValue> promise) noexcept {
-  promise.Resolve(winrt::Microsoft::ReactNative::JSValue(winrt::Microsoft::ReactNative::JSValueObject()));
+void KioskModule::getWifiInfo(ReactPromise<std::map<std::string, std::string>> promise) noexcept {
+  promise.Resolve(std::map<std::string, std::string>());
 }
 
 // Time
-void KioskModule::getCurrentTime(winrt::Microsoft::ReactNative::ReactPromise<std::string> promise) noexcept {
+void KioskModule::getCurrentTime(ReactPromise<std::string> promise) noexcept {
   auto now = std::chrono::system_clock::now();
   auto time = std::chrono::system_clock::to_time_t(now);
   char buf[64];
@@ -375,12 +366,12 @@ void KioskModule::getCurrentTime(winrt::Microsoft::ReactNative::ReactPromise<std
   promise.Resolve(std::string(buf));
 }
 
-void KioskModule::setSystemTime(int year, int month, int day, int hour, int minute, int second, winrt::Microsoft::ReactNative::ReactPromise<void> promise) noexcept {
+void KioskModule::setSystemTime(int year, int month, int day, int hour, int minute, int second, ReactPromise<void> promise) noexcept {
   promise.Resolve();
 }
 
 // Misc
-void KioskModule::getEnvironmentVariable(std::string name, winrt::Microsoft::ReactNative::ReactPromise<std::string> promise) noexcept {
+void KioskModule::getEnvironmentVariable(std::string name, ReactPromise<std::string> promise) noexcept {
   char* value = nullptr;
   size_t len = 0;
   _dupenv_s(&value, &len, name.c_str());
@@ -392,16 +383,16 @@ void KioskModule::getEnvironmentVariable(std::string name, winrt::Microsoft::Rea
   }
 }
 
-void KioskModule::setEnvironmentVariable(std::string name, std::string value, winrt::Microsoft::ReactNative::ReactPromise<void> promise) noexcept {
+void KioskModule::setEnvironmentVariable(std::string name, std::string value, ReactPromise<void> promise) noexcept {
   _putenv_s(name.c_str(), value.c_str());
   promise.Resolve();
 }
 
-void KioskModule::getCommandLine(winrt::Microsoft::ReactNative::ReactPromise<std::string> promise) noexcept {
+void KioskModule::getCommandLine(ReactPromise<std::string> promise) noexcept {
   promise.Resolve(GetCommandLineA());
 }
 
-void KioskModule::executeCommand(std::string command, winrt::Microsoft::ReactNative::ReactPromise<std::string> promise) noexcept {
+void KioskModule::executeCommand(std::string command, ReactPromise<std::string> promise) noexcept {
   promise.Resolve("");
 }
 

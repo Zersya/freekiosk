@@ -2,6 +2,7 @@
 #include "SystemInfoModule.h"
 
 #include "NativeModules.h"
+
 #include <windows.h>
 #include <winsock2.h>
 #include <ws2tcpip.h>
@@ -20,80 +21,80 @@ void SystemInfoModule::Initialize(winrt::Microsoft::ReactNative::ReactContext co
   m_reactContext = reactContext;
 }
 
-void SystemInfoModule::getDeviceInfo(ReactPromise<JSValue> promise) noexcept {
-  JSValueObject map;
-  map["platform"] = JSValue(std::string("windows"));
-  map["version"] = JSValue(std::string("1.0.0"));
-  map["buildNumber"] = JSValue(1);
+void SystemInfoModule::getDeviceInfo(ReactPromise<std::map<std::string, std::string>> promise) noexcept {
+  std::map<std::string, std::string> result;
+  result["platform"] = "windows";
+  result["version"] = "1.0.0";
+  result["buildNumber"] = "1";
 
   char hostname[MAX_COMPUTERNAME_LENGTH + 1];
   DWORD size = sizeof(hostname);
   if (GetComputerNameA(hostname, &size)) {
-    map["hostname"] = JSValue(std::string(hostname, size));
+    result["hostname"] = std::string(hostname, size);
   }
 
-  promise.Resolve(winrt::Microsoft::ReactNative::JSValue(std::move(map)));
+  promise.Resolve(result);
 }
 
-void SystemInfoModule::getBatteryInfo(ReactPromise<JSValue> promise) noexcept {
+void SystemInfoModule::getBatteryInfo(ReactPromise<std::map<std::string, std::string>> promise) noexcept {
   SYSTEM_POWER_STATUS status;
   if (GetSystemPowerStatus(&status)) {
-    JSValueObject map;
-    map["level"] = JSValue((int)status.BatteryLifePercent);
-    map["charging"] = JSValue(status.ACLineStatus == 1);
-    map["temperature"] = JSValue(0);
-    promise.Resolve(winrt::Microsoft::ReactNative::JSValue(std::move(map)));
+    std::map<std::string, std::string> result;
+    result["level"] = std::to_string((int)status.BatteryLifePercent);
+    result["charging"] = status.ACLineStatus == 1 ? "true" : "false";
+    result["temperature"] = "0";
+    promise.Resolve(result);
   } else {
-    promise.Resolve(JSValueObject());
+    promise.Resolve(std::map<std::string, std::string>());
   }
 }
 
-void SystemInfoModule::getStorageInfo(ReactPromise<JSValue> promise) noexcept {
+void SystemInfoModule::getStorageInfo(ReactPromise<std::map<std::string, std::string>> promise) noexcept {
   ULARGE_INTEGER freeBytesAvailable, totalBytes, totalFreeBytes;
   if (GetDiskFreeSpaceExA("C:\\", &freeBytesAvailable, &totalBytes, &totalFreeBytes)) {
-    JSValueObject map;
-    map["free"] = JSValue((double)freeBytesAvailable.QuadPart / (1024.0 * 1024.0 * 1024.0));
-    map["total"] = JSValue((double)totalBytes.QuadPart / (1024.0 * 1024.0 * 1024.0));
-    map["used"] = JSValue((double)(totalBytes.QuadPart - totalFreeBytes.QuadPart) / (1024.0 * 1024.0 * 1024.0));
-    promise.Resolve(winrt::Microsoft::ReactNative::JSValue(std::move(map)));
+    std::map<std::string, std::string> result;
+    result["free"] = std::to_string((double)freeBytesAvailable.QuadPart / (1024.0 * 1024.0 * 1024.0));
+    result["total"] = std::to_string((double)totalBytes.QuadPart / (1024.0 * 1024.0 * 1024.0));
+    result["used"] = std::to_string((double)(totalBytes.QuadPart - totalFreeBytes.QuadPart) / (1024.0 * 1024.0 * 1024.0));
+    promise.Resolve(result);
   } else {
-    promise.Resolve(JSValueObject());
+    promise.Resolve(std::map<std::string, std::string>());
   }
 }
 
-void SystemInfoModule::getMemoryInfo(ReactPromise<JSValue> promise) noexcept {
+void SystemInfoModule::getMemoryInfo(ReactPromise<std::map<std::string, std::string>> promise) noexcept {
   MEMORYSTATUSEX memInfo = {};
   memInfo.dwLength = sizeof(memInfo);
   if (GlobalMemoryStatusEx(&memInfo)) {
-    JSValueObject map;
-    map["free"] = JSValue((double)memInfo.ullAvailPhys / (1024.0 * 1024.0));
-    map["total"] = JSValue((double)memInfo.ullTotalPhys / (1024.0 * 1024.0));
-    map["used"] = JSValue((double)(memInfo.ullTotalPhys - memInfo.ullAvailPhys) / (1024.0 * 1024.0));
-    promise.Resolve(winrt::Microsoft::ReactNative::JSValue(std::move(map)));
+    std::map<std::string, std::string> result;
+    result["free"] = std::to_string((double)memInfo.ullAvailPhys / (1024.0 * 1024.0));
+    result["total"] = std::to_string((double)memInfo.ullTotalPhys / (1024.0 * 1024.0));
+    result["used"] = std::to_string((double)(memInfo.ullTotalPhys - memInfo.ullAvailPhys) / (1024.0 * 1024.0));
+    promise.Resolve(result);
   } else {
-    promise.Resolve(JSValueObject());
+    promise.Resolve(std::map<std::string, std::string>());
   }
 }
 
-void SystemInfoModule::getCpuInfo(ReactPromise<JSValue> promise) noexcept {
-  JSValueObject map;
-  map["usage"] = JSValue(0);
-  map["cores"] = JSValue((int)GetActiveProcessorCount(ALL_PROCESSOR_GROUPS));
-  promise.Resolve(winrt::Microsoft::ReactNative::JSValue(std::move(map)));
+void SystemInfoModule::getCpuInfo(ReactPromise<std::map<std::string, std::string>> promise) noexcept {
+  std::map<std::string, std::string> result;
+  result["usage"] = "0";
+  result["cores"] = std::to_string((int)GetActiveProcessorCount(ALL_PROCESSOR_GROUPS));
+  promise.Resolve(result);
 }
 
-void SystemInfoModule::getNetworkInfo(ReactPromise<JSValue> promise) noexcept {
-  JSValueObject map;
-  map["platform"] = JSValue(std::string("windows"));
-  promise.Resolve(winrt::Microsoft::ReactNative::JSValue(std::move(map)));
+void SystemInfoModule::getNetworkInfo(ReactPromise<std::map<std::string, std::string>> promise) noexcept {
+  std::map<std::string, std::string> result;
+  result["platform"] = "windows";
+  promise.Resolve(result);
 }
 
-void SystemInfoModule::getDisplayInfo(ReactPromise<JSValue> promise) noexcept {
-  JSValueObject map;
-  map["width"] = JSValue((int)GetSystemMetrics(SM_CXSCREEN));
-  map["height"] = JSValue((int)GetSystemMetrics(SM_CYSCREEN));
-  map["dpi"] = JSValue((int)GetDpiForSystem());
-  promise.Resolve(winrt::Microsoft::ReactNative::JSValue(std::move(map)));
+void SystemInfoModule::getDisplayInfo(ReactPromise<std::map<std::string, std::string>> promise) noexcept {
+  std::map<std::string, std::string> result;
+  result["width"] = std::to_string((int)GetSystemMetrics(SM_CXSCREEN));
+  result["height"] = std::to_string((int)GetSystemMetrics(SM_CYSCREEN));
+  result["dpi"] = std::to_string((int)GetDpiForSystem());
+  promise.Resolve(result);
 }
 
 void SystemInfoModule::getUptime(ReactPromise<int64_t> promise) noexcept {

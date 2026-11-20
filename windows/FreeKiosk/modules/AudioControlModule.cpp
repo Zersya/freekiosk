@@ -2,7 +2,6 @@
 #include "AudioControlModule.h"
 
 #include "NativeModules.h"
-#include "JSValue.h"
 
 #include <windows.h>
 #include <mmsystem.h>
@@ -53,10 +52,10 @@ void AudioControlModule::setMute(bool muted, ReactPromise<void> promise) noexcep
   promise.Resolve();
 }
 
-void AudioControlModule::getAudioDevices(ReactPromise<JSValue> promise) noexcept {
-  JSValueObject result;
-  result["devices"] = JSValue(JSValueArray());
-  promise.Resolve(winrt::Microsoft::ReactNative::JSValue(std::move(result)));
+void AudioControlModule::getAudioDevices(ReactPromise<std::map<std::string, std::string>> promise) noexcept {
+  std::map<std::string, std::string> result;
+  result["devices"] = "[]";
+  promise.Resolve(result);
 }
 
 void AudioControlModule::setAudioDevice(std::string deviceId, ReactPromise<void> promise) noexcept {

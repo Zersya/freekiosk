@@ -2,10 +2,6 @@
 #include "FilePickerModule.h"
 
 #include "NativeModules.h"
-#include "JSValue.h"
-
-#include <winrt/Windows.Storage.Pickers.h>
-#include <winrt/Windows.Storage.h>
 
 namespace winrt::FreeKiosk::implementation {
 
@@ -19,10 +15,10 @@ void FilePickerModule::pickFile(std::string filter, ReactPromise<std::string> pr
   promise.Resolve("");
 }
 
-void FilePickerModule::pickFiles(std::string filter, ReactPromise<JSValue> promise) noexcept {
-  JSValueObject result;
-  result["files"] = JSValue(JSValueArray());
-  promise.Resolve(winrt::Microsoft::ReactNative::JSValue(std::move(result)));
+void FilePickerModule::pickFiles(std::string filter, ReactPromise<std::map<std::string, std::string>> promise) noexcept {
+  std::map<std::string, std::string> result;
+  result["files"] = "[]";
+  promise.Resolve(result);
 }
 
 void FilePickerModule::pickFolder(ReactPromise<std::string> promise) noexcept {

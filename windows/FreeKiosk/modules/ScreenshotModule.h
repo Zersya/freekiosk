@@ -1,7 +1,6 @@
 #pragma once
 
 #include "NativeModules.h"
-#include "JSValue.h"
 #include <string>
 
 namespace winrt::FreeKiosk::implementation {

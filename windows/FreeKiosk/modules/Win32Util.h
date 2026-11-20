@@ -1,7 +1,6 @@
 #pragma once
 
 #include "NativeModules.h"
-#include "JSValue.h"
 #include <string>
 
 namespace winrt::FreeKiosk::implementation {
@@ -14,7 +13,7 @@ struct Win32UtilModule {
   void Initialize(winrt::Microsoft::ReactNative::ReactContext const &reactContext) noexcept;
 
   REACT_METHOD(getForegroundWindow)
-  void getForegroundWindow(winrt::Microsoft::ReactNative::ReactPromise<winrt::Microsoft::ReactNative::JSValue> promise) noexcept;
+  void getForegroundWindow(winrt::Microsoft::ReactNative::ReactPromise<std::map<std::string, std::string>> promise) noexcept;
 
   REACT_METHOD(getWindowTitle)
   void getWindowTitle(int hwnd, winrt::Microsoft::ReactNative::ReactPromise<std::string> promise) noexcept;
@@ -26,10 +25,10 @@ struct Win32UtilModule {
   void getProcessName(int pid, winrt::Microsoft::ReactNative::ReactPromise<std::string> promise) noexcept;
 
   REACT_METHOD(getScreenDimensions)
-  void getScreenDimensions(winrt::Microsoft::ReactNative::ReactPromise<winrt::Microsoft::ReactNative::JSValue> promise) noexcept;
+  void getScreenDimensions(winrt::Microsoft::ReactNative::ReactPromise<std::map<std::string, std::string>> promise) noexcept;
 
   REACT_METHOD(getCursorPosition)
-  void getCursorPosition(winrt::Microsoft::ReactNative::ReactPromise<winrt::Microsoft::ReactNative::JSValue> promise) noexcept;
+  void getCursorPosition(winrt::Microsoft::ReactNative::ReactPromise<std::map<std::string, std::string>> promise) noexcept;
 
   REACT_METHOD(simulateKeyPress)
   void simulateKeyPress(int vkCode, bool keyDown, winrt::Microsoft::ReactNative::ReactPromise<void> promise) noexcept;
