@@ -13,10 +13,8 @@ void Win32UtilModule::Initialize(winrt::Microsoft::ReactNative::ReactContext con
   m_reactContext = reactContext;
 }
 
-void Win32UtilModule::getForegroundWindow(ReactPromise<std::map<std::string, std::string>> promise) noexcept {
-  std::map<std::string, std::string> result;
-  result["hwnd"] = std::to_string((int)GetForegroundWindow());
-  promise.Resolve(result);
+void Win32UtilModule::getForegroundWindow(ReactPromise<std::string> promise) noexcept {
+  promise.Resolve("{\"hwnd\":\"" + std::to_string((int)GetForegroundWindow()) + "\"}");
 }
 
 void Win32UtilModule::getWindowTitle(int hwnd, ReactPromise<std::string> promise) noexcept {
@@ -45,7 +43,6 @@ void Win32UtilModule::getProcessName(int pid, ReactPromise<std::string> promise)
   if (Process32First(hSnapshot, &pe32)) {
     do {
       if (pe32.th32ProcessID == pid) {
-        // Convert WCHAR to UTF-8
         int len = WideCharToMultiByte(CP_UTF8, 0, pe32.szExeFile, -1, nullptr, 0, nullptr, nullptr);
         processName.resize(len > 0 ? len - 1 : 0);
         if (len > 0) {
@@ -60,20 +57,14 @@ void Win32UtilModule::getProcessName(int pid, ReactPromise<std::string> promise)
   promise.Resolve(processName);
 }
 
-void Win32UtilModule::getScreenDimensions(ReactPromise<std::map<std::string, std::string>> promise) noexcept {
-  std::map<std::string, std::string> result;
-  result["width"] = std::to_string((int)GetSystemMetrics(SM_CXSCREEN));
-  result["height"] = std::to_string((int)GetSystemMetrics(SM_CYSCREEN));
-  promise.Resolve(result);
+void Win32UtilModule::getScreenDimensions(ReactPromise<std::string> promise) noexcept {
+  promise.Resolve("{\"width\":" + std::to_string((int)GetSystemMetrics(SM_CXSCREEN)) + ",\"height\":" + std::to_string((int)GetSystemMetrics(SM_CYSCREEN)) + "}");
 }
 
-void Win32UtilModule::getCursorPosition(ReactPromise<std::map<std::string, std::string>> promise) noexcept {
+void Win32UtilModule::getCursorPosition(ReactPromise<std::string> promise) noexcept {
   POINT pt;
   GetCursorPos(&pt);
-  std::map<std::string, std::string> result;
-  result["x"] = std::to_string(pt.x);
-  result["y"] = std::to_string(pt.y);
-  promise.Resolve(result);
+  promise.Resolve("{\"x\":" + std::to_string(pt.x) + ",\"y\":" + std::to_string(pt.y) + "}");
 }
 
 void Win32UtilModule::simulateKeyPress(int vkCode, bool keyDown, ReactPromise<void> promise) noexcept {

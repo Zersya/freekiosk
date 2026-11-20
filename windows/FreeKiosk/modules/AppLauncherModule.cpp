@@ -25,16 +25,12 @@ void AppLauncherModule::launchAppWithArgs(std::string packageName, std::string a
   promise.Resolve();
 }
 
-void AppLauncherModule::getInstalledApps(ReactPromise<std::map<std::string, std::string>> promise) noexcept {
-  std::map<std::string, std::string> result;
-  result["apps"] = "[]";
-  promise.Resolve(result);
+void AppLauncherModule::getInstalledApps(ReactPromise<std::string> promise) noexcept {
+  promise.Resolve("{\"apps\":[]}");
 }
 
-void AppLauncherModule::getAppInfo(std::string packageName, ReactPromise<std::map<std::string, std::string>> promise) noexcept {
-  std::map<std::string, std::string> result;
-  result["packageName"] = packageName;
-  result["installed"] = "true";
+void AppLauncherModule::getAppInfo(std::string packageName, ReactPromise<std::string> promise) noexcept {
+  std::string result = "{\"packageName\":\"" + packageName + "\",\"installed\":true}";
   promise.Resolve(result);
 }
 
@@ -46,10 +42,8 @@ void AppLauncherModule::killApp(std::string packageName, ReactPromise<void> prom
   promise.Resolve();
 }
 
-void AppLauncherModule::getRunningApps(ReactPromise<std::map<std::string, std::string>> promise) noexcept {
-  std::map<std::string, std::string> result;
-  result["apps"] = "[]";
-  promise.Resolve(result);
+void AppLauncherModule::getRunningApps(ReactPromise<std::string> promise) noexcept {
+  promise.Resolve("{\"apps\":[]}");
 }
 
 void AppLauncherModule::setLaunchOnBoot(std::string packageName, bool enabled, ReactPromise<void> promise) noexcept {

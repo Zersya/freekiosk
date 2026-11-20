@@ -21,79 +21,60 @@ void SystemInfoModule::Initialize(winrt::Microsoft::ReactNative::ReactContext co
   m_reactContext = reactContext;
 }
 
-void SystemInfoModule::getDeviceInfo(ReactPromise<std::map<std::string, std::string>> promise) noexcept {
-  std::map<std::string, std::string> result;
-  result["platform"] = "windows";
-  result["version"] = "1.0.0";
-  result["buildNumber"] = "1";
+void SystemInfoModule::getDeviceInfo(ReactPromise<std::string> promise) noexcept {
+  std::string result = "{\"platform\":\"windows\",\"version\":\"1.0.0\",\"buildNumber\":\"1\"";
 
   char hostname[MAX_COMPUTERNAME_LENGTH + 1];
   DWORD size = sizeof(hostname);
   if (GetComputerNameA(hostname, &size)) {
-    result["hostname"] = std::string(hostname, size);
+    result += ",\"hostname\":\"" + std::string(hostname, size) + "\"";
   }
-
+  result += "}";
   promise.Resolve(result);
 }
 
-void SystemInfoModule::getBatteryInfo(ReactPromise<std::map<std::string, std::string>> promise) noexcept {
+void SystemInfoModule::getBatteryInfo(ReactPromise<std::string> promise) noexcept {
   SYSTEM_POWER_STATUS status;
   if (GetSystemPowerStatus(&status)) {
-    std::map<std::string, std::string> result;
-    result["level"] = std::to_string((int)status.BatteryLifePercent);
-    result["charging"] = status.ACLineStatus == 1 ? "true" : "false";
-    result["temperature"] = "0";
+    std::string result = "{\"level\":" + std::to_string((int)status.BatteryLifePercent) + ",\"charging\":" + (status.ACLineStatus == 1 ? "true" : "false") + ",\"temperature\":\"0\"}";
     promise.Resolve(result);
   } else {
-    promise.Resolve(std::map<std::string, std::string>());
+    promise.Resolve("{}");
   }
 }
 
-void SystemInfoModule::getStorageInfo(ReactPromise<std::map<std::string, std::string>> promise) noexcept {
+void SystemInfoModule::getStorageInfo(ReactPromise<std::string> promise) noexcept {
   ULARGE_INTEGER freeBytesAvailable, totalBytes, totalFreeBytes;
   if (GetDiskFreeSpaceExA("C:\\", &freeBytesAvailable, &totalBytes, &totalFreeBytes)) {
-    std::map<std::string, std::string> result;
-    result["free"] = std::to_string((double)freeBytesAvailable.QuadPart / (1024.0 * 1024.0 * 1024.0));
-    result["total"] = std::to_string((double)totalBytes.QuadPart / (1024.0 * 1024.0 * 1024.0));
-    result["used"] = std::to_string((double)(totalBytes.QuadPart - totalFreeBytes.QuadPart) / (1024.0 * 1024.0 * 1024.0));
+    std::string result = "{\"free\":" + std::to_string((double)freeBytesAvailable.QuadPart / (1024.0 * 1024.0 * 1024.0)) + ",\"total\":" + std::to_string((double)totalBytes.QuadPart / (1024.0 * 1024.0 * 1024.0)) + ",\"used\":" + std::to_string((double)(totalBytes.QuadPart - totalFreeBytes.QuadPart) / (1024.0 * 1024.0 * 1024.0)) + "}";
     promise.Resolve(result);
   } else {
-    promise.Resolve(std::map<std::string, std::string>());
+    promise.Resolve("{}");
   }
 }
 
-void SystemInfoModule::getMemoryInfo(ReactPromise<std::map<std::string, std::string>> promise) noexcept {
+void SystemInfoModule::getMemoryInfo(ReactPromise<std::string> promise) noexcept {
   MEMORYSTATUSEX memInfo = {};
   memInfo.dwLength = sizeof(memInfo);
   if (GlobalMemoryStatusEx(&memInfo)) {
-    std::map<std::string, std::string> result;
-    result["free"] = std::to_string((double)memInfo.ullAvailPhys / (1024.0 * 1024.0));
-    result["total"] = std::to_string((double)memInfo.ullTotalPhys / (1024.0 * 1024.0));
-    result["used"] = std::to_string((double)(memInfo.ullTotalPhys - memInfo.ullAvailPhys) / (1024.0 * 1024.0));
+    std::string result = "{\"free\":" + std::to_string((double)memInfo.ullAvailPhys / (1024.0 * 1024.0)) + ",\"total\":" + std::to_string((double)memInfo.ullTotalPhys / (1024.0 * 1024.0)) + ",\"used\":" + std::to_string((double)(memInfo.ullTotalPhys - memInfo.ullAvailPhys) / (1024.0 * 1024.0)) + "}";
     promise.Resolve(result);
   } else {
-    promise.Resolve(std::map<std::string, std::string>());
+    promise.Resolve("{}");
   }
 }
 
-void SystemInfoModule::getCpuInfo(ReactPromise<std::map<std::string, std::string>> promise) noexcept {
-  std::map<std::string, std::string> result;
-  result["usage"] = "0";
-  result["cores"] = std::to_string((int)GetActiveProcessorCount(ALL_PROCESSOR_GROUPS));
+void SystemInfoModule::getCpuInfo(ReactPromise<std::string> promise) noexcept {
+  std::string result = "{\"usage\":\"0\",\"cores\":\"" + std::to_string((int)GetActiveProcessorCount(ALL_PROCESSOR_GROUPS)) + "\"}";
   promise.Resolve(result);
 }
 
-void SystemInfoModule::getNetworkInfo(ReactPromise<std::map<std::string, std::string>> promise) noexcept {
-  std::map<std::string, std::string> result;
-  result["platform"] = "windows";
-  promise.Resolve(result);
+void SystemInfoModule::getNetworkInfo(ReactPromise<std::string> promise) noexcept {
+  promise.Resolve("{\"platform\":\"windows\"}");
 }
 
-void SystemInfoModule::getDisplayInfo(ReactPromise<std::map<std::string, std::string>> promise) noexcept {
-  std::map<std::string, std::string> result;
-  result["width"] = std::to_string((int)GetSystemMetrics(SM_CXSCREEN));
-  result["height"] = std::to_string((int)GetSystemMetrics(SM_CYSCREEN));
-  result["dpi"] = std::to_string((int)GetDpiForSystem());
+void SystemInfoModule::getDisplayInfo(ReactPromise<std::string> promise) noexcept {
+  std::string result = "{\"width\":" + std::to_string((int)GetSystemMetrics(SM_CXSCREEN)) + ",\"height\":" + std::to_string((int)GetSystemMetrics(SM_CYSCREEN)) + ",\"dpi\":\"" + std::to_string((int)GetDpiForSystem()) + "\"}";
   promise.Resolve(result);
 }
 

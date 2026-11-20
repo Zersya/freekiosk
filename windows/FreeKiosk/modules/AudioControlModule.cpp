@@ -52,10 +52,8 @@ void AudioControlModule::setMute(bool muted, ReactPromise<void> promise) noexcep
   promise.Resolve();
 }
 
-void AudioControlModule::getAudioDevices(ReactPromise<std::map<std::string, std::string>> promise) noexcept {
-  std::map<std::string, std::string> result;
-  result["devices"] = "[]";
-  promise.Resolve(result);
+void AudioControlModule::getAudioDevices(ReactPromise<std::string> promise) noexcept {
+  promise.Resolve("{\"devices\":[]}");
 }
 
 void AudioControlModule::setAudioDevice(std::string deviceId, ReactPromise<void> promise) noexcept {

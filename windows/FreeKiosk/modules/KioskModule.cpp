@@ -116,35 +116,27 @@ void KioskModule::launchFile(std::string path, ReactPromise<void> promise) noexc
 }
 
 // System info
-void KioskModule::getDeviceInfo(ReactPromise<std::map<std::string, std::string>> promise) noexcept {
-  std::map<std::string, std::string> result;
-  result["platform"] = "windows";
-  result["version"] = "1.0.0";
-  result["buildNumber"] = "1";
-  promise.Resolve(result);
+void KioskModule::getDeviceInfo(ReactPromise<std::string> promise) noexcept {
+  promise.Resolve("{\"platform\":\"windows\",\"version\":\"1.0.0\",\"buildNumber\":\"1\"}");
 }
 
-void KioskModule::getBatteryInfo(ReactPromise<std::map<std::string, std::string>> promise) noexcept {
+void KioskModule::getBatteryInfo(ReactPromise<std::string> promise) noexcept {
   SYSTEM_POWER_STATUS status;
   if (GetSystemPowerStatus(&status)) {
-    std::map<std::string, std::string> result;
-    result["level"] = std::to_string((int)status.BatteryLifePercent);
-    result["charging"] = status.ACLineStatus == 1 ? "true" : "false";
+    std::string result = "{\"level\":" + std::to_string((int)status.BatteryLifePercent) + ",\"charging\":" + (status.ACLineStatus == 1 ? "true" : "false") + "}";
     promise.Resolve(result);
   } else {
-    promise.Resolve(std::map<std::string, std::string>());
+    promise.Resolve("{}");
   }
 }
 
-void KioskModule::getStorageInfo(ReactPromise<std::map<std::string, std::string>> promise) noexcept {
+void KioskModule::getStorageInfo(ReactPromise<std::string> promise) noexcept {
   ULARGE_INTEGER freeBytesAvailable, totalBytes, totalFreeBytes;
   if (GetDiskFreeSpaceExA("C:\\", &freeBytesAvailable, &totalBytes, &totalFreeBytes)) {
-    std::map<std::string, std::string> result;
-    result["free"] = std::to_string((double)freeBytesAvailable.QuadPart / (1024.0 * 1024.0 * 1024.0));
-    result["total"] = std::to_string((double)totalBytes.QuadPart / (1024.0 * 1024.0 * 1024.0));
+    std::string result = "{\"free\":" + std::to_string((double)freeBytesAvailable.QuadPart / (1024.0 * 1024.0 * 1024.0)) + ",\"total\":" + std::to_string((double)totalBytes.QuadPart / (1024.0 * 1024.0 * 1024.0)) + "}";
     promise.Resolve(result);
   } else {
-    promise.Resolve(std::map<std::string, std::string>());
+    promise.Resolve("{}");
   }
 }
 
@@ -325,10 +317,8 @@ void KioskModule::setRegistryValue(std::string keyPath, std::string value, React
 }
 
 // Process control
-void KioskModule::getProcessList(ReactPromise<std::map<std::string, std::string>> promise) noexcept {
-  std::map<std::string, std::string> result;
-  result["processes"] = "[]";
-  promise.Resolve(result);
+void KioskModule::getProcessList(ReactPromise<std::string> promise) noexcept {
+  promise.Resolve("{\"processes\":[]}");
 }
 
 void KioskModule::killProcess(int pid, ReactPromise<void> promise) noexcept {
@@ -342,19 +332,17 @@ void KioskModule::killProcess(int pid, ReactPromise<void> promise) noexcept {
   }
 }
 
-void KioskModule::getProcessInfo(int pid, ReactPromise<std::map<std::string, std::string>> promise) noexcept {
-  promise.Resolve(std::map<std::string, std::string>());
+void KioskModule::getProcessInfo(int pid, ReactPromise<std::string> promise) noexcept {
+  promise.Resolve("{}");
 }
 
 // Network
-void KioskModule::getNetworkInfo(ReactPromise<std::map<std::string, std::string>> promise) noexcept {
-  std::map<std::string, std::string> result;
-  result["platform"] = "windows";
-  promise.Resolve(result);
+void KioskModule::getNetworkInfo(ReactPromise<std::string> promise) noexcept {
+  promise.Resolve("{\"platform\":\"windows\"}");
 }
 
-void KioskModule::getWifiInfo(ReactPromise<std::map<std::string, std::string>> promise) noexcept {
-  promise.Resolve(std::map<std::string, std::string>());
+void KioskModule::getWifiInfo(ReactPromise<std::string> promise) noexcept {
+  promise.Resolve("{}");
 }
 
 // Time

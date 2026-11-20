@@ -22,7 +22,7 @@ struct BlockingOverlayModule {
   void clearOverlays(winrt::Microsoft::ReactNative::ReactPromise<void> promise) noexcept;
 
   REACT_METHOD(getOverlays)
-  void getOverlays(winrt::Microsoft::ReactNative::ReactPromise<std::map<std::string, std::string>> promise) noexcept;
+  void getOverlays(winrt::Microsoft::ReactNative::ReactPromise<std::string> promise) noexcept;
 
   winrt::Microsoft::ReactNative::ReactContext m_reactContext;
 };

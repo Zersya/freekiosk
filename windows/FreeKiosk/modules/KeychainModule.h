@@ -25,7 +25,7 @@ struct KeychainModule {
   void clear(winrt::Microsoft::ReactNative::ReactPromise<void> promise) noexcept;
 
   REACT_METHOD(getAllKeys)
-  void getAllKeys(winrt::Microsoft::ReactNative::ReactPromise<std::map<std::string, std::string>> promise) noexcept;
+  void getAllKeys(winrt::Microsoft::ReactNative::ReactPromise<std::string> promise) noexcept;
 
   winrt::Microsoft::ReactNative::ReactContext m_reactContext;
 };

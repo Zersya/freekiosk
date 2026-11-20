@@ -15,10 +15,8 @@ void FilePickerModule::pickFile(std::string filter, ReactPromise<std::string> pr
   promise.Resolve("");
 }
 
-void FilePickerModule::pickFiles(std::string filter, ReactPromise<std::map<std::string, std::string>> promise) noexcept {
-  std::map<std::string, std::string> result;
-  result["files"] = "[]";
-  promise.Resolve(result);
+void FilePickerModule::pickFiles(std::string filter, ReactPromise<std::string> promise) noexcept {
+  promise.Resolve("{\"files\":[]}");
 }
 
 void FilePickerModule::pickFolder(ReactPromise<std::string> promise) noexcept {

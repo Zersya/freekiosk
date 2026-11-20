@@ -45,11 +45,8 @@ void KeychainModule::clear(ReactPromise<void> promise) noexcept {
   promise.Resolve();
 }
 
-void KeychainModule::getAllKeys(ReactPromise<std::map<std::string, std::string>> promise) noexcept {
-  std::lock_guard<std::mutex> lock(g_keychainMutex);
-  std::map<std::string, std::string> result;
-  result["keys"] = "[]";
-  promise.Resolve(result);
+void KeychainModule::getAllKeys(ReactPromise<std::string> promise) noexcept {
+  promise.Resolve("{\"keys\":[]}");
 }
 
 } // namespace winrt::FreeKiosk::implementation

@@ -44,11 +44,8 @@ void BlockingOverlayModule::clearOverlays(ReactPromise<void> promise) noexcept {
   promise.Resolve();
 }
 
-void BlockingOverlayModule::getOverlays(ReactPromise<std::map<std::string, std::string>> promise) noexcept {
-  std::lock_guard<std::mutex> lock(g_overlaysMutex);
-  std::map<std::string, std::string> result;
-  result["overlays"] = "[]";
-  promise.Resolve(result);
+void BlockingOverlayModule::getOverlays(ReactPromise<std::string> promise) noexcept {
+  promise.Resolve("{\"overlays\":[]}");
 }
 
 } // namespace winrt::FreeKiosk::implementation

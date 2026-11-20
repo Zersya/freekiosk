@@ -23,11 +23,8 @@ void HttpServerModule::isRunning(ReactPromise<bool> promise) noexcept {
   promise.Resolve(false);
 }
 
-void HttpServerModule::getServerInfo(ReactPromise<std::map<std::string, std::string>> promise) noexcept {
-  std::map<std::string, std::string> result;
-  result["port"] = "8080";
-  result["running"] = "false";
-  promise.Resolve(result);
+void HttpServerModule::getServerInfo(ReactPromise<std::string> promise) noexcept {
+  promise.Resolve("{\"port\":\"8080\",\"running\":\"false\"}");
 }
 
 void HttpServerModule::getLocalIp(ReactPromise<std::string> promise) noexcept {
