@@ -13,6 +13,8 @@ const WINDOWS_SHIMS = {
   '@react-native-community/slider': 'src/platform/windows/shims/slider.tsx',
   'react-native-vector-icons/MaterialCommunityIcons':
     'src/platform/windows/shims/MaterialCommunityIcons.tsx',
+  '@react-native-async-storage/async-storage':
+    'src/platform/windows/shims/asyncStorage.tsx',
 };
 
 function resolveRequest(context, moduleName, platform) {

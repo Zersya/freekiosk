@@ -41,6 +41,9 @@ module.exports = {
     'react-native-keychain': {
       platforms: { windows: null },
     },
+    '@react-native-async-storage/async-storage': {
+      platforms: { windows: null },
+    },
     'react-native-webview-windows': {
       platforms: { android: null, ios: null },
     },
