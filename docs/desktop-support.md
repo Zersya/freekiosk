@@ -97,37 +97,49 @@ Source: [React Native Directory](https://reactnative.directory), queried 2026-11
 
 | Feature | Windows | macOS |
 |---|---|---|
-| WebView mode | Portable | Portable |
-| Media Player | Portable | Portable |
-| Dashboard (URL tiles) | Portable | Portable |
-| PIN screen | Portable | Portable |
-| Settings UI | Portable | Portable |
-| Planner / Screen scheduler UI logic | Portable | Portable |
-| External App mode | Needs native port | Needs native port |
-| REST API | Needs native port | Needs native port |
-| MQTT / Home Assistant | Needs native port | Needs native port |
-| Motion detection | Needs native port | Needs native port |
-| Blocking overlays | Needs native port | Needs native port |
-| Wi-Fi / Bluetooth / audio / brightness dialogs | Needs native port | Needs native port |
-| Self-update | Needs native port | Needs native port |
-| MDM | Needs native port | Needs native port |
+| WebView mode | ✅ Implemented | Portable |
+| Media Player | ✅ Implemented | Portable |
+| Dashboard (URL tiles) | ✅ Implemented | Portable |
+| PIN screen | ✅ Implemented | Portable |
+| Settings UI | ✅ Implemented | Portable |
+| Planner / Screen scheduler UI logic | ✅ Implemented | Portable |
+| External App mode | ✅ Implemented | Needs native port |
+| REST API | ✅ Implemented | Needs native port |
+| MQTT / Home Assistant | ✅ Implemented | Needs native port |
+| Motion detection | ❌ Hidden | Needs native port |
+| Blocking overlays | ✅ Implemented | Needs native port |
+| Wi-Fi / Bluetooth / audio / brightness dialogs | ⚠️ Partial | Needs native port |
+| Self-update | ❌ Disabled | Needs native port |
+| MDM | ❌ Hidden | Needs native port |
 | Device Owner | Not possible | Not possible |
 | ADB provisioning | Not possible | Not possible |
 | APK install | Not possible | Not possible |
 | Flashlight | Not possible | Not possible |
 | Android accessibility-service features | Not possible | Not possible |
-| Screen rotation | Needs native port | Not possible |
+| Screen rotation | ❌ Hidden | Not possible |
 
 `MediaPlayerComponent.tsx` renders through `react-native-webview` and `DashboardGrid.tsx` is pure React Native, which is why those modes are portable.
 
 ## Recommended path
 
-1. **Windows MVP** with react-native-windows `0.82.x` (matches the current RN version):
-   - add a `windows/` project;
-   - add `Platform.OS === 'windows'` guards so the 34 `NativeModules` call sites no-op;
-   - ship WebView, Media and Dashboard modes, PIN and Settings;
-   - document Shell Launcher / Assigned Access setup.
-2. **Windows parity:** native modules in priority order: REST API → MQTT → SystemInfo / Audio / ScreenCapture → External App launcher → overlays.
+1. **Windows MVP** — ✅ **COMPLETE**
+   - ✅ `windows/` project created with react-native-windows 0.82.8
+   - ✅ `Platform.OS === 'windows'` guards for all NativeModules call sites
+   - ✅ WebView, Media, Dashboard, PIN, Settings modes working
+   - ✅ REST API and MQTT implemented in pure TypeScript
+   - ✅ 13 C++ native modules for device control
+   - ✅ CI workflow for Windows builds
+   - 📋 Shell Launcher / Assigned Access setup documented in [Windows](Windows)
+
+2. **Windows parity** — 🔄 **IN PROGRESS**
+   - ✅ REST API → pure TS implementation
+   - ✅ MQTT → pure TS implementation
+   - ✅ SystemInfo → C++ module
+   - ✅ Audio → C++ module
+   - ⚠️ ScreenCapture → stub (needs Windows.Graphics.Capture)
+   - ✅ External App launcher → C++ module
+   - ✅ Overlays → C++ module
+
 3. **macOS:** start only once react-native-macos ships a release matching the repo's RN version (today 0.83.0 vs repo 0.82.0; no 0.82.x exists). Use the same module order, plus a `PresentationOptions` kiosk and a LaunchAgent.
 
 **Alternative:** an Electron/Tauri desktop app gets Windows and macOS from one codebase for web-kiosk mode. It reuses only the non-UI TS (storage and config logic), not the RN components, and REST/MQTT would run in Node (no native port). It forks the UI, so it is not recommended unless desktop is web-kiosk-only.
