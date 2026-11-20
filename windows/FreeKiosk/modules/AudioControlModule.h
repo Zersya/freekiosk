@@ -1,6 +1,7 @@
 #pragma once
 
 #include "NativeModules.h"
+#include "JSValue.h"
 #include <string>
 
 namespace winrt::FreeKiosk::implementation {
@@ -25,7 +26,7 @@ struct AudioControlModule {
   void setMute(bool muted, winrt::Microsoft::ReactNative::ReactPromise<void> promise) noexcept;
 
   REACT_METHOD(getAudioDevices)
-  void getAudioDevices(winrt::Microsoft::ReactNative::ReactPromise<winrt::Windows::Foundation::IInspectable> promise) noexcept;
+  void getAudioDevices(winrt::Microsoft::ReactNative::ReactPromise<winrt::Microsoft::ReactNative::JSValueObject> promise) noexcept;
 
   REACT_METHOD(setAudioDevice)
   void setAudioDevice(std::string deviceId, winrt::Microsoft::ReactNative::ReactPromise<void> promise) noexcept;

@@ -1,46 +1,45 @@
 #include "pch.h"
 #include "HttpServerModule.h"
 
-#include <winrt/Windows.Foundation.Collections.h>
+#include "NativeModules.h"
+#include "JSValue.h"
 
 namespace winrt::FreeKiosk::implementation {
 
-using namespace winrt;
-using namespace Windows::Foundation;
-using namespace Windows::Foundation::Collections;
+using namespace winrt::Microsoft::ReactNative;
 
 void HttpServerModule::Initialize(winrt::Microsoft::ReactNative::ReactContext const &reactContext) noexcept {
   m_reactContext = reactContext;
 }
 
-void HttpServerModule::startServer(int port, winrt::Microsoft::ReactNative::ReactPromise<void> promise) noexcept {
+void HttpServerModule::startServer(int port, ReactPromise<void> promise) noexcept {
   promise.Resolve();
 }
 
-void HttpServerModule::stopServer(winrt::Microsoft::ReactNative::ReactPromise<void> promise) noexcept {
+void HttpServerModule::stopServer(ReactPromise<void> promise) noexcept {
   promise.Resolve();
 }
 
-void HttpServerModule::isRunning(winrt::Microsoft::ReactNative::ReactPromise<bool> promise) noexcept {
+void HttpServerModule::isRunning(ReactPromise<bool> promise) noexcept {
   promise.Resolve(false);
 }
 
-void HttpServerModule::getServerInfo(winrt::Microsoft::ReactNative::ReactPromise<IInspectable> promise) noexcept {
-  auto map = winrt::make<Windows::Foundation::Collections::PropertySet>();
-  map.Insert(L"port", winrt::box_value(8080));
-  map.Insert(L"running", winrt::box_value(false));
+void HttpServerModule::getServerInfo(ReactPromise<JSValueObject> promise) noexcept {
+  JSValueObject map;
+  map["port"] = JSValue(8080);
+  map["running"] = JSValue(false);
   promise.Resolve(map);
 }
 
-void HttpServerModule::getLocalIp(winrt::Microsoft::ReactNative::ReactPromise<std::string> promise) noexcept {
+void HttpServerModule::getLocalIp(ReactPromise<std::string> promise) noexcept {
   promise.Resolve("127.0.0.1");
 }
 
-void HttpServerModule::updateStatus(IInspectable status, winrt::Microsoft::ReactNative::ReactPromise<void> promise) noexcept {
+void HttpServerModule::updateStatus(winrt::Windows::Foundation::IInspectable status, ReactPromise<void> promise) noexcept {
   promise.Resolve();
 }
 
-void HttpServerModule::sendCommand(std::string path, IInspectable params, winrt::Microsoft::ReactNative::ReactPromise<void> promise) noexcept {
+void HttpServerModule::sendCommand(std::string path, winrt::Windows::Foundation::IInspectable params, ReactPromise<void> promise) noexcept {
   promise.Resolve();
 }
 

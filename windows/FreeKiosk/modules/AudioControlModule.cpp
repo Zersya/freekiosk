@@ -1,7 +1,8 @@
 #include "pch.h"
 #include "AudioControlModule.h"
 
-#include <winrt/Windows.Foundation.Collections.h>
+#include "NativeModules.h"
+#include "JSValue.h"
 
 #include <windows.h>
 #include <mmsystem.h>
@@ -10,15 +11,13 @@
 
 namespace winrt::FreeKiosk::implementation {
 
-using namespace winrt;
-using namespace Windows::Foundation;
-using namespace Windows::Foundation::Collections;
+using namespace winrt::Microsoft::ReactNative;
 
 void AudioControlModule::Initialize(winrt::Microsoft::ReactNative::ReactContext const &reactContext) noexcept {
   m_reactContext = reactContext;
 }
 
-void AudioControlModule::getVolume(winrt::Microsoft::ReactNative::ReactPromise<int> promise) noexcept {
+void AudioControlModule::getVolume(ReactPromise<int> promise) noexcept {
   HWAVEOUT hWaveOut;
   if (waveOutOpen(&hWaveOut, WAVE_MAPPER, nullptr, 0, 0, CALLBACK_NULL) == MMSYSERR_NOERROR) {
     DWORD volume = 0;
@@ -31,7 +30,7 @@ void AudioControlModule::getVolume(winrt::Microsoft::ReactNative::ReactPromise<i
   }
 }
 
-void AudioControlModule::setVolume(int level, winrt::Microsoft::ReactNative::ReactPromise<void> promise) noexcept {
+void AudioControlModule::setVolume(int level, ReactPromise<void> promise) noexcept {
   level = std::max(0, std::min(100, level));
   DWORD volume = (level * 0xFFFF) / 100;
   volume = (volume << 16) | volume;
@@ -46,24 +45,25 @@ void AudioControlModule::setVolume(int level, winrt::Microsoft::ReactNative::Rea
   }
 }
 
-void AudioControlModule::getMute(winrt::Microsoft::ReactNative::ReactPromise<bool> promise) noexcept {
+void AudioControlModule::getMute(ReactPromise<bool> promise) noexcept {
   promise.Resolve(false);
 }
 
-void AudioControlModule::setMute(bool muted, winrt::Microsoft::ReactNative::ReactPromise<void> promise) noexcept {
+void AudioControlModule::setMute(bool muted, ReactPromise<void> promise) noexcept {
   promise.Resolve();
 }
 
-void AudioControlModule::getAudioDevices(winrt::Microsoft::ReactNative::ReactPromise<IInspectable> promise) noexcept {
-  auto vector = winrt::make<Windows::Foundation::Collections::IVector<IInspectable>>();
-  promise.Resolve(vector);
+void AudioControlModule::getAudioDevices(ReactPromise<JSValueObject> promise) noexcept {
+  JSValueObject result;
+  result["devices"] = JSValue(JSValueArray());
+  promise.Resolve(result);
 }
 
-void AudioControlModule::setAudioDevice(std::string deviceId, winrt::Microsoft::ReactNative::ReactPromise<void> promise) noexcept {
+void AudioControlModule::setAudioDevice(std::string deviceId, ReactPromise<void> promise) noexcept {
   promise.Resolve();
 }
 
-void AudioControlModule::getAudioOutput(winrt::Microsoft::ReactNative::ReactPromise<std::string> promise) noexcept {
+void AudioControlModule::getAudioOutput(ReactPromise<std::string> promise) noexcept {
   promise.Resolve("default");
 }
 

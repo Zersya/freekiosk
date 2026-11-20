@@ -1,6 +1,7 @@
 #pragma once
 
 #include "NativeModules.h"
+#include "JSValue.h"
 #include <string>
 
 namespace winrt::FreeKiosk::implementation {
@@ -25,7 +26,7 @@ struct KeychainModule {
   void clear(winrt::Microsoft::ReactNative::ReactPromise<void> promise) noexcept;
 
   REACT_METHOD(getAllKeys)
-  void getAllKeys(winrt::Microsoft::ReactNative::ReactPromise<winrt::Windows::Foundation::IInspectable> promise) noexcept;
+  void getAllKeys(winrt::Microsoft::ReactNative::ReactPromise<winrt::Microsoft::ReactNative::JSValueObject> promise) noexcept;
 
   winrt::Microsoft::ReactNative::ReactContext m_reactContext;
 };

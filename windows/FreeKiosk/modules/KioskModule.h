@@ -1,6 +1,7 @@
 #pragma once
 
 #include "NativeModules.h"
+#include "JSValue.h"
 #include <string>
 #include <map>
 #include <mutex>
@@ -63,13 +64,13 @@ struct KioskModule {
 
   // System info
   REACT_METHOD(getDeviceInfo)
-  void getDeviceInfo(winrt::Microsoft::ReactNative::ReactPromise<winrt::Windows::Foundation::IInspectable> promise) noexcept;
+  void getDeviceInfo(winrt::Microsoft::ReactNative::ReactPromise<winrt::Microsoft::ReactNative::JSValueObject> promise) noexcept;
 
   REACT_METHOD(getBatteryInfo)
-  void getBatteryInfo(winrt::Microsoft::ReactNative::ReactPromise<winrt::Windows::Foundation::IInspectable> promise) noexcept;
+  void getBatteryInfo(winrt::Microsoft::ReactNative::ReactPromise<winrt::Microsoft::ReactNative::JSValueObject> promise) noexcept;
 
   REACT_METHOD(getStorageInfo)
-  void getStorageInfo(winrt::Microsoft::ReactNative::ReactPromise<winrt::Windows::Foundation::IInspectable> promise) noexcept;
+  void getStorageInfo(winrt::Microsoft::ReactNative::ReactPromise<winrt::Microsoft::ReactNative::JSValueObject> promise) noexcept;
 
   // Window control
   REACT_METHOD(setAlwaysOnTop)
@@ -152,20 +153,20 @@ struct KioskModule {
 
   // Process control
   REACT_METHOD(getProcessList)
-  void getProcessList(winrt::Microsoft::ReactNative::ReactPromise<winrt::Windows::Foundation::IInspectable> promise) noexcept;
+  void getProcessList(winrt::Microsoft::ReactNative::ReactPromise<winrt::Microsoft::ReactNative::JSValueObject> promise) noexcept;
 
   REACT_METHOD(killProcess)
   void killProcess(int pid, winrt::Microsoft::ReactNative::ReactPromise<void> promise) noexcept;
 
   REACT_METHOD(getProcessInfo)
-  void getProcessInfo(int pid, winrt::Microsoft::ReactNative::ReactPromise<winrt::Windows::Foundation::IInspectable> promise) noexcept;
+  void getProcessInfo(int pid, winrt::Microsoft::ReactNative::ReactPromise<winrt::Microsoft::ReactNative::JSValueObject> promise) noexcept;
 
   // Network
   REACT_METHOD(getNetworkInfo)
-  void getNetworkInfo(winrt::Microsoft::ReactNative::ReactPromise<winrt::Windows::Foundation::IInspectable> promise) noexcept;
+  void getNetworkInfo(winrt::Microsoft::ReactNative::ReactPromise<winrt::Microsoft::ReactNative::JSValueObject> promise) noexcept;
 
   REACT_METHOD(getWifiInfo)
-  void getWifiInfo(winrt::Microsoft::ReactNative::ReactPromise<winrt::Windows::Foundation::IInspectable> promise) noexcept;
+  void getWifiInfo(winrt::Microsoft::ReactNative::ReactPromise<winrt::Microsoft::ReactNative::JSValueObject> promise) noexcept;
 
   // Time
   REACT_METHOD(getCurrentTime)

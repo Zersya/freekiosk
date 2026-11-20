@@ -1,6 +1,7 @@
 #pragma once
 
 #include "NativeModules.h"
+#include "JSValue.h"
 #include <string>
 
 namespace winrt::FreeKiosk::implementation {
@@ -13,25 +14,25 @@ struct SystemInfoModule {
   void Initialize(winrt::Microsoft::ReactNative::ReactContext const &reactContext) noexcept;
 
   REACT_METHOD(getDeviceInfo)
-  void getDeviceInfo(winrt::Microsoft::ReactNative::ReactPromise<winrt::Windows::Foundation::IInspectable> promise) noexcept;
+  void getDeviceInfo(winrt::Microsoft::ReactNative::ReactPromise<winrt::Microsoft::ReactNative::JSValueObject> promise) noexcept;
 
   REACT_METHOD(getBatteryInfo)
-  void getBatteryInfo(winrt::Microsoft::ReactNative::ReactPromise<winrt::Windows::Foundation::IInspectable> promise) noexcept;
+  void getBatteryInfo(winrt::Microsoft::ReactNative::ReactPromise<winrt::Microsoft::ReactNative::JSValueObject> promise) noexcept;
 
   REACT_METHOD(getStorageInfo)
-  void getStorageInfo(winrt::Microsoft::ReactNative::ReactPromise<winrt::Windows::Foundation::IInspectable> promise) noexcept;
+  void getStorageInfo(winrt::Microsoft::ReactNative::ReactPromise<winrt::Microsoft::ReactNative::JSValueObject> promise) noexcept;
 
   REACT_METHOD(getMemoryInfo)
-  void getMemoryInfo(winrt::Microsoft::ReactNative::ReactPromise<winrt::Windows::Foundation::IInspectable> promise) noexcept;
+  void getMemoryInfo(winrt::Microsoft::ReactNative::ReactPromise<winrt::Microsoft::ReactNative::JSValueObject> promise) noexcept;
 
   REACT_METHOD(getCpuInfo)
-  void getCpuInfo(winrt::Microsoft::ReactNative::ReactPromise<winrt::Windows::Foundation::IInspectable> promise) noexcept;
+  void getCpuInfo(winrt::Microsoft::ReactNative::ReactPromise<winrt::Microsoft::ReactNative::JSValueObject> promise) noexcept;
 
   REACT_METHOD(getNetworkInfo)
-  void getNetworkInfo(winrt::Microsoft::ReactNative::ReactPromise<winrt::Windows::Foundation::IInspectable> promise) noexcept;
+  void getNetworkInfo(winrt::Microsoft::ReactNative::ReactPromise<winrt::Microsoft::ReactNative::JSValueObject> promise) noexcept;
 
   REACT_METHOD(getDisplayInfo)
-  void getDisplayInfo(winrt::Microsoft::ReactNative::ReactPromise<winrt::Windows::Foundation::IInspectable> promise) noexcept;
+  void getDisplayInfo(winrt::Microsoft::ReactNative::ReactPromise<winrt::Microsoft::ReactNative::JSValueObject> promise) noexcept;
 
   REACT_METHOD(getUptime)
   void getUptime(winrt::Microsoft::ReactNative::ReactPromise<int64_t> promise) noexcept;

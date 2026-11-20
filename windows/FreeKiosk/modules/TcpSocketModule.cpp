@@ -63,13 +63,13 @@ void TcpSocketModule::createServer(int port, winrt::Microsoft::ReactNative::Reac
 
   if (bind(listenSocket, (sockaddr*)&serverAddr, sizeof(serverAddr)) == SOCKET_ERROR) {
     closesocket(listenSocket);
-    promise.Reject("Failed to bind to port " + std::to_string(port));
+    promise.Reject(("Failed to bind to port " + std::to_string(port)).c_str());
     return;
   }
 
   if (listen(listenSocket, SOMAXCONN) == SOCKET_ERROR) {
     closesocket(listenSocket);
-    promise.Reject("Failed to listen on port " + std::to_string(port));
+    promise.Reject(("Failed to listen on port " + std::to_string(port)).c_str());
     return;
   }
 
@@ -128,7 +128,7 @@ void TcpSocketModule::connect(std::string host, int port, winrt::Microsoft::Reac
   int addrResult = getaddrinfo(host.c_str(), portStr.c_str(), &hints, &result);
   if (addrResult != 0) {
     closesocket(sock);
-    promise.Reject("Failed to resolve host: " + host);
+    promise.Reject(("Failed to resolve host: " + host).c_str());
     return;
   }
 
@@ -137,7 +137,7 @@ void TcpSocketModule::connect(std::string host, int port, winrt::Microsoft::Reac
 
   if (connectResult == SOCKET_ERROR) {
     closesocket(sock);
-    promise.Reject("Failed to connect to " + host + ":" + portStr);
+    promise.Reject(("Failed to connect to " + host + ":" + portStr).c_str());
     return;
   }
 
@@ -175,7 +175,7 @@ void TcpSocketModule::send(int socketId, std::string data, winrt::Microsoft::Rea
 
   auto it = m_sockets.find(socketId);
   if (it == m_sockets.end()) {
-    promise.Reject("Socket not found: " + std::to_string(socketId));
+    promise.Reject(("Socket not found: " + std::to_string(socketId)).c_str());
     return;
   }
 

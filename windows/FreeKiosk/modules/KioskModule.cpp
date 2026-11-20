@@ -125,35 +125,35 @@ void KioskModule::launchFile(std::string path, winrt::Microsoft::ReactNative::Re
 }
 
 // System info
-void KioskModule::getDeviceInfo(winrt::Microsoft::ReactNative::ReactPromise<IInspectable> promise) noexcept {
-  auto map = winrt::make<Windows::Foundation::Collections::PropertySet>();
-  map.Insert(L"platform", winrt::box_value(L"windows"));
-  map.Insert(L"version", winrt::box_value(L"1.0.0"));
-  map.Insert(L"buildNumber", winrt::box_value(1));
+void KioskModule::getDeviceInfo(winrt::Microsoft::ReactNative::ReactPromise<winrt::Microsoft::ReactNative::JSValueObject> promise) noexcept {
+  winrt::Microsoft::ReactNative::JSValueObject map;
+  map["platform"] = winrt::Microsoft::ReactNative::JSValue(std::string("windows"));
+  map["version"] = winrt::Microsoft::ReactNative::JSValue(std::string("1.0.0"));
+  map["buildNumber"] = winrt::Microsoft::ReactNative::JSValue(1);
   promise.Resolve(map);
 }
 
-void KioskModule::getBatteryInfo(winrt::Microsoft::ReactNative::ReactPromise<IInspectable> promise) noexcept {
+void KioskModule::getBatteryInfo(winrt::Microsoft::ReactNative::ReactPromise<winrt::Microsoft::ReactNative::JSValueObject> promise) noexcept {
   SYSTEM_POWER_STATUS status;
   if (GetSystemPowerStatus(&status)) {
-    auto map = winrt::make<Windows::Foundation::Collections::PropertySet>();
-    map.Insert(L"level", winrt::box_value((int)status.BatteryLifePercent));
-    map.Insert(L"charging", winrt::box_value(status.ACLineStatus == 1));
+    winrt::Microsoft::ReactNative::JSValueObject map;
+    map["level"] = winrt::Microsoft::ReactNative::JSValue((int)status.BatteryLifePercent);
+    map["charging"] = winrt::Microsoft::ReactNative::JSValue(status.ACLineStatus == 1);
     promise.Resolve(map);
   } else {
-    promise.Resolve(nullptr);
+    promise.Resolve(winrt::Microsoft::ReactNative::JSValueObject());
   }
 }
 
-void KioskModule::getStorageInfo(winrt::Microsoft::ReactNative::ReactPromise<IInspectable> promise) noexcept {
+void KioskModule::getStorageInfo(winrt::Microsoft::ReactNative::ReactPromise<winrt::Microsoft::ReactNative::JSValueObject> promise) noexcept {
   ULARGE_INTEGER freeBytesAvailable, totalBytes, totalFreeBytes;
   if (GetDiskFreeSpaceExA("C:\\", &freeBytesAvailable, &totalBytes, &totalFreeBytes)) {
-    auto map = winrt::make<Windows::Foundation::Collections::PropertySet>();
-    map.Insert(L"free", winrt::box_value((double)freeBytesAvailable.QuadPart / (1024.0 * 1024.0 * 1024.0)));
-    map.Insert(L"total", winrt::box_value((double)totalBytes.QuadPart / (1024.0 * 1024.0 * 1024.0)));
+    winrt::Microsoft::ReactNative::JSValueObject map;
+    map["free"] = winrt::Microsoft::ReactNative::JSValue((double)freeBytesAvailable.QuadPart / (1024.0 * 1024.0 * 1024.0));
+    map["total"] = winrt::Microsoft::ReactNative::JSValue((double)totalBytes.QuadPart / (1024.0 * 1024.0 * 1024.0));
     promise.Resolve(map);
   } else {
-    promise.Resolve(nullptr);
+    promise.Resolve(winrt::Microsoft::ReactNative::JSValueObject());
   }
 }
 
@@ -290,7 +290,7 @@ void KioskModule::hideNotification(winrt::Microsoft::ReactNative::ReactPromise<v
 void KioskModule::readFile(std::string path, winrt::Microsoft::ReactNative::ReactPromise<std::string> promise) noexcept {
   std::ifstream file(path, std::ios::binary);
   if (!file.is_open()) {
-    promise.Reject("Failed to open file: " + path);
+    promise.Reject(("Failed to open file: " + path).c_str());
     return;
   }
 
@@ -302,7 +302,7 @@ void KioskModule::readFile(std::string path, winrt::Microsoft::ReactNative::Reac
 void KioskModule::writeFile(std::string path, std::string content, winrt::Microsoft::ReactNative::ReactPromise<void> promise) noexcept {
   std::ofstream file(path, std::ios::binary | std::ios::trunc);
   if (!file.is_open()) {
-    promise.Reject("Failed to open file for writing: " + path);
+    promise.Reject(("Failed to open file for writing: " + path).c_str());
     return;
   }
 
@@ -320,7 +320,7 @@ void KioskModule::deleteFile(std::string path, winrt::Microsoft::ReactNative::Re
     std::filesystem::remove(path);
     promise.Resolve();
   } catch (...) {
-    promise.Reject("Failed to delete file: " + path);
+    promise.Reject(("Failed to delete file: " + path).c_str());
   }
 }
 
@@ -334,8 +334,10 @@ void KioskModule::setRegistryValue(std::string keyPath, std::string value, winrt
 }
 
 // Process control
-void KioskModule::getProcessList(winrt::Microsoft::ReactNative::ReactPromise<IInspectable> promise) noexcept {
-  promise.Resolve(nullptr);
+void KioskModule::getProcessList(winrt::Microsoft::ReactNative::ReactPromise<winrt::Microsoft::ReactNative::JSValueObject> promise) noexcept {
+  winrt::Microsoft::ReactNative::JSValueObject result;
+  result["processes"] = winrt::Microsoft::ReactNative::JSValue(winrt::Microsoft::ReactNative::JSValueArray());
+  promise.Resolve(result);
 }
 
 void KioskModule::killProcess(int pid, winrt::Microsoft::ReactNative::ReactPromise<void> promise) noexcept {
@@ -345,23 +347,23 @@ void KioskModule::killProcess(int pid, winrt::Microsoft::ReactNative::ReactPromi
     CloseHandle(hProcess);
     promise.Resolve();
   } else {
-    promise.Reject("Failed to kill process: " + std::to_string(pid));
+    promise.Reject(("Failed to kill process: " + std::to_string(pid)).c_str());
   }
 }
 
-void KioskModule::getProcessInfo(int pid, winrt::Microsoft::ReactNative::ReactPromise<IInspectable> promise) noexcept {
-  promise.Resolve(nullptr);
+void KioskModule::getProcessInfo(int pid, winrt::Microsoft::ReactNative::ReactPromise<winrt::Microsoft::ReactNative::JSValueObject> promise) noexcept {
+  promise.Resolve(winrt::Microsoft::ReactNative::JSValueObject());
 }
 
 // Network
-void KioskModule::getNetworkInfo(winrt::Microsoft::ReactNative::ReactPromise<IInspectable> promise) noexcept {
-  auto map = winrt::make<Windows::Foundation::Collections::PropertySet>();
-  map.Insert(L"platform", winrt::box_value(L"windows"));
+void KioskModule::getNetworkInfo(winrt::Microsoft::ReactNative::ReactPromise<winrt::Microsoft::ReactNative::JSValueObject> promise) noexcept {
+  winrt::Microsoft::ReactNative::JSValueObject map;
+  map["platform"] = winrt::Microsoft::ReactNative::JSValue(std::string("windows"));
   promise.Resolve(map);
 }
 
-void KioskModule::getWifiInfo(winrt::Microsoft::ReactNative::ReactPromise<IInspectable> promise) noexcept {
-  promise.Resolve(nullptr);
+void KioskModule::getWifiInfo(winrt::Microsoft::ReactNative::ReactPromise<winrt::Microsoft::ReactNative::JSValueObject> promise) noexcept {
+  promise.Resolve(winrt::Microsoft::ReactNative::JSValueObject());
 }
 
 // Time

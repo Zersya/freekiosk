@@ -1,6 +1,7 @@
 #pragma once
 
 #include "NativeModules.h"
+#include "JSValue.h"
 #include <string>
 
 namespace winrt::FreeKiosk::implementation {
@@ -22,7 +23,7 @@ struct HttpServerModule {
   void isRunning(winrt::Microsoft::ReactNative::ReactPromise<bool> promise) noexcept;
 
   REACT_METHOD(getServerInfo)
-  void getServerInfo(winrt::Microsoft::ReactNative::ReactPromise<winrt::Windows::Foundation::IInspectable> promise) noexcept;
+  void getServerInfo(winrt::Microsoft::ReactNative::ReactPromise<winrt::Microsoft::ReactNative::JSValueObject> promise) noexcept;
 
   REACT_METHOD(getLocalIp)
   void getLocalIp(winrt::Microsoft::ReactNative::ReactPromise<std::string> promise) noexcept;

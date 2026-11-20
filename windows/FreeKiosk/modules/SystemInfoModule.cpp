@@ -1,7 +1,8 @@
 #include "pch.h"
 #include "SystemInfoModule.h"
 
-#include <winrt/Windows.Foundation.Collections.h>
+#include "NativeModules.h"
+#include "JSValue.h"
 
 #include <windows.h>
 #include <iphlpapi.h>
@@ -12,96 +13,94 @@
 
 namespace winrt::FreeKiosk::implementation {
 
-using namespace winrt;
-using namespace Windows::Foundation;
-using namespace Windows::Foundation::Collections;
+using namespace winrt::Microsoft::ReactNative;
 
 void SystemInfoModule::Initialize(winrt::Microsoft::ReactNative::ReactContext const &reactContext) noexcept {
   m_reactContext = reactContext;
 }
 
-void SystemInfoModule::getDeviceInfo(winrt::Microsoft::ReactNative::ReactPromise<IInspectable> promise) noexcept {
-  auto map = winrt::make<Windows::Foundation::Collections::PropertySet>();
-  map.Insert(L"platform", winrt::box_value(L"windows"));
-  map.Insert(L"version", winrt::box_value(L"1.0.0"));
-  map.Insert(L"buildNumber", winrt::box_value(1));
+void SystemInfoModule::getDeviceInfo(ReactPromise<JSValueObject> promise) noexcept {
+  JSValueObject map;
+  map["platform"] = JSValue(std::string("windows"));
+  map["version"] = JSValue(std::string("1.0.0"));
+  map["buildNumber"] = JSValue(1);
 
   char hostname[MAX_COMPUTERNAME_LENGTH + 1];
   DWORD size = sizeof(hostname);
   if (GetComputerNameA(hostname, &size)) {
-    map.Insert(L"hostname", winrt::box_value(std::wstring(hostname, hostname + size)));
+    map["hostname"] = JSValue(std::string(hostname, size));
   }
 
   promise.Resolve(map);
 }
 
-void SystemInfoModule::getBatteryInfo(winrt::Microsoft::ReactNative::ReactPromise<IInspectable> promise) noexcept {
+void SystemInfoModule::getBatteryInfo(ReactPromise<JSValueObject> promise) noexcept {
   SYSTEM_POWER_STATUS status;
   if (GetSystemPowerStatus(&status)) {
-    auto map = winrt::make<Windows::Foundation::Collections::PropertySet>();
-    map.Insert(L"level", winrt::box_value((int)status.BatteryLifePercent));
-    map.Insert(L"charging", winrt::box_value(status.ACLineStatus == 1));
-    map.Insert(L"temperature", winrt::box_value(0));
+    JSValueObject map;
+    map["level"] = JSValue((int)status.BatteryLifePercent);
+    map["charging"] = JSValue(status.ACLineStatus == 1);
+    map["temperature"] = JSValue(0);
     promise.Resolve(map);
   } else {
-    promise.Resolve(nullptr);
+    promise.Resolve(JSValueObject());
   }
 }
 
-void SystemInfoModule::getStorageInfo(winrt::Microsoft::ReactNative::ReactPromise<IInspectable> promise) noexcept {
+void SystemInfoModule::getStorageInfo(ReactPromise<JSValueObject> promise) noexcept {
   ULARGE_INTEGER freeBytesAvailable, totalBytes, totalFreeBytes;
   if (GetDiskFreeSpaceExA("C:\\", &freeBytesAvailable, &totalBytes, &totalFreeBytes)) {
-    auto map = winrt::make<Windows::Foundation::Collections::PropertySet>();
-    map.Insert(L"free", winrt::box_value((double)freeBytesAvailable.QuadPart / (1024.0 * 1024.0 * 1024.0)));
-    map.Insert(L"total", winrt::box_value((double)totalBytes.QuadPart / (1024.0 * 1024.0 * 1024.0)));
-    map.Insert(L"used", winrt::box_value((double)(totalBytes.QuadPart - totalFreeBytes.QuadPart) / (1024.0 * 1024.0 * 1024.0)));
+    JSValueObject map;
+    map["free"] = JSValue((double)freeBytesAvailable.QuadPart / (1024.0 * 1024.0 * 1024.0));
+    map["total"] = JSValue((double)totalBytes.QuadPart / (1024.0 * 1024.0 * 1024.0));
+    map["used"] = JSValue((double)(totalBytes.QuadPart - totalFreeBytes.QuadPart) / (1024.0 * 1024.0 * 1024.0));
     promise.Resolve(map);
   } else {
-    promise.Resolve(nullptr);
+    promise.Resolve(JSValueObject());
   }
 }
 
-void SystemInfoModule::getMemoryInfo(winrt::Microsoft::ReactNative::ReactPromise<IInspectable> promise) noexcept {
+void SystemInfoModule::getMemoryInfo(ReactPromise<JSValueObject> promise) noexcept {
   MEMORYSTATUSEX memInfo = {};
   memInfo.dwLength = sizeof(memInfo);
   if (GlobalMemoryStatusEx(&memInfo)) {
-    auto map = winrt::make<Windows::Foundation::Collections::PropertySet>();
-    map.Insert(L"free", winrt::box_value((double)memInfo.ullAvailPhys / (1024.0 * 1024.0)));
-    map.Insert(L"total", winrt::box_value((double)memInfo.ullTotalPhys / (1024.0 * 1024.0)));
-    map.Insert(L"used", winrt::box_value((double)(memInfo.ullTotalPhys - memInfo.ullAvailPhys) / (1024.0 * 1024.0)));
+    JSValueObject map;
+    map["free"] = JSValue((double)memInfo.ullAvailPhys / (1024.0 * 1024.0));
+    map["total"] = JSValue((double)memInfo.ullTotalPhys / (1024.0 * 1024.0));
+    map["used"] = JSValue((double)(memInfo.ullTotalPhys - memInfo.ullAvailPhys) / (1024.0 * 1024.0));
     promise.Resolve(map);
   } else {
-    promise.Resolve(nullptr);
+    promise.Resolve(JSValueObject());
   }
 }
 
-void SystemInfoModule::getCpuInfo(winrt::Microsoft::ReactNative::ReactPromise<IInspectable> promise) noexcept {
-  auto map = winrt::make<Windows::Foundation::Collections::PropertySet>();
-  map.Insert(L"usage", winrt::box_value(0));
-  map.Insert(L"cores", winrt::box_value((int)GetActiveProcessorCount(ALL_PROCESSOR_GROUPS)));
+void SystemInfoModule::getCpuInfo(ReactPromise<JSValueObject> promise) noexcept {
+  JSValueObject map;
+  map["usage"] = JSValue(0);
+  map["cores"] = JSValue((int)GetActiveProcessorCount(ALL_PROCESSOR_GROUPS));
   promise.Resolve(map);
 }
 
-void SystemInfoModule::getNetworkInfo(winrt::Microsoft::ReactNative::ReactPromise<IInspectable> promise) noexcept {
-  auto map = winrt::make<Windows::Foundation::Collections::PropertySet>();
-  map.Insert(L"platform", winrt::box_value(L"windows"));
+void SystemInfoModule::getNetworkInfo(ReactPromise<JSValueObject> promise) noexcept {
+  JSValueObject map;
+  map["platform"] = JSValue(std::string("windows"));
   promise.Resolve(map);
 }
 
-void SystemInfoModule::getDisplayInfo(winrt::Microsoft::ReactNative::ReactPromise<IInspectable> promise) noexcept {
-  auto map = winrt::make<Windows::Foundation::Collections::PropertySet>();
-  map.Insert(L"width", winrt::box_value((int)GetSystemMetrics(SM_CXSCREEN)));
-  map.Insert(L"height", winrt::box_value((int)GetSystemMetrics(SM_CYSCREEN)));
-  map.Insert(L"dpi", winrt::box_value((int)GetDpiForSystem()));
+void SystemInfoModule::getDisplayInfo(ReactPromise<JSValueObject> promise) noexcept {
+  JSValueObject map;
+  map["width"] = JSValue((int)GetSystemMetrics(SM_CXSCREEN));
+  map["height"] = JSValue((int)GetSystemMetrics(SM_CYSCREEN));
+  map["dpi"] = JSValue((int)GetDpiForSystem());
   promise.Resolve(map);
 }
 
-void SystemInfoModule::getUptime(winrt::Microsoft::ReactNative::ReactPromise<int64_t> promise) noexcept {
+void SystemInfoModule::getUptime(ReactPromise<int64_t> promise) noexcept {
   ULONGLONG uptime = GetTickCount64() / 1000;
   promise.Resolve((int64_t)uptime);
 }
 
-void SystemInfoModule::getHostname(winrt::Microsoft::ReactNative::ReactPromise<std::string> promise) noexcept {
+void SystemInfoModule::getHostname(ReactPromise<std::string> promise) noexcept {
   char hostname[MAX_COMPUTERNAME_LENGTH + 1];
   DWORD size = sizeof(hostname);
   if (GetComputerNameA(hostname, &size)) {
@@ -111,7 +110,7 @@ void SystemInfoModule::getHostname(winrt::Microsoft::ReactNative::ReactPromise<s
   }
 }
 
-void SystemInfoModule::getMacAddress(winrt::Microsoft::ReactNative::ReactPromise<std::string> promise) noexcept {
+void SystemInfoModule::getMacAddress(ReactPromise<std::string> promise) noexcept {
   IP_ADAPTER_INFO adapterInfo[16];
   DWORD bufLen = sizeof(adapterInfo);
 
@@ -132,7 +131,7 @@ void SystemInfoModule::getMacAddress(winrt::Microsoft::ReactNative::ReactPromise
   promise.Resolve("");
 }
 
-void SystemInfoModule::getIpAddress(winrt::Microsoft::ReactNative::ReactPromise<std::string> promise) noexcept {
+void SystemInfoModule::getIpAddress(ReactPromise<std::string> promise) noexcept {
   char hostname[256];
   if (gethostname(hostname, sizeof(hostname)) == 0) {
     addrinfo hints = {};
@@ -155,7 +154,7 @@ void SystemInfoModule::getIpAddress(winrt::Microsoft::ReactNative::ReactPromise<
   promise.Resolve("127.0.0.1");
 }
 
-void SystemInfoModule::getSerialNumber(winrt::Microsoft::ReactNative::ReactPromise<std::string> promise) noexcept {
+void SystemInfoModule::getSerialNumber(ReactPromise<std::string> promise) noexcept {
   promise.Resolve("");
 }
 

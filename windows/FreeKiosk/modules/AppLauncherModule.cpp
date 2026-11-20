@@ -27,15 +27,16 @@ void AppLauncherModule::launchAppWithArgs(std::string packageName, std::string a
   promise.Resolve();
 }
 
-void AppLauncherModule::getInstalledApps(winrt::Microsoft::ReactNative::ReactPromise<IInspectable> promise) noexcept {
-  auto vector = winrt::make<Windows::Foundation::Collections::IVector<IInspectable>>();
-  promise.Resolve(vector);
+void AppLauncherModule::getInstalledApps(winrt::Microsoft::ReactNative::ReactPromise<winrt::Microsoft::ReactNative::JSValueObject> promise) noexcept {
+  winrt::Microsoft::ReactNative::JSValueObject result;
+  result["apps"] = winrt::Microsoft::ReactNative::JSValue(winrt::Microsoft::ReactNative::JSValueArray());
+  promise.Resolve(result);
 }
 
-void AppLauncherModule::getAppInfo(std::string packageName, winrt::Microsoft::ReactNative::ReactPromise<IInspectable> promise) noexcept {
-  auto map = winrt::make<Windows::Foundation::Collections::PropertySet>();
-  map.Insert(L"packageName", winrt::box_value(std::wstring(packageName.begin(), packageName.end())));
-  map.Insert(L"installed", winrt::box_value(true));
+void AppLauncherModule::getAppInfo(std::string packageName, winrt::Microsoft::ReactNative::ReactPromise<winrt::Microsoft::ReactNative::JSValueObject> promise) noexcept {
+  winrt::Microsoft::ReactNative::JSValueObject map;
+  map["packageName"] = winrt::Microsoft::ReactNative::JSValue(packageName);
+  map["installed"] = winrt::Microsoft::ReactNative::JSValue(true);
   promise.Resolve(map);
 }
 
@@ -47,8 +48,8 @@ void AppLauncherModule::killApp(std::string packageName, winrt::Microsoft::React
   promise.Resolve();
 }
 
-void AppLauncherModule::getRunningApps(winrt::Microsoft::ReactNative::ReactPromise<IInspectable> promise) noexcept {
-  auto vector = winrt::make<Windows::Foundation::Collections::IVector<IInspectable>>();
+void AppLauncherModule::getRunningApps(winrt::Microsoft::ReactNative::ReactPromise<winrt::Microsoft::ReactNative::JSValueObject> promise) noexcept {
+  winrt::Microsoft::ReactNative::JSValueArray apps;
 
   HANDLE hSnapshot = CreateToolhelp32Snapshot(TH32CS_SNAPPROCESS, 0);
   if (hSnapshot != INVALID_HANDLE_VALUE) {
@@ -57,16 +58,18 @@ void AppLauncherModule::getRunningApps(winrt::Microsoft::ReactNative::ReactPromi
 
     if (Process32First(hSnapshot, &pe32)) {
       do {
-        auto map = winrt::make<Windows::Foundation::Collections::PropertySet>();
-        map.Insert(L"name", winrt::box_value(std::wstring(pe32.szExeFile)));
-        map.Insert(L"pid", winrt::box_value((int)pe32.th32ProcessID));
-        vector.Append(map);
+        winrt::Microsoft::ReactNative::JSValueObject app;
+        app["name"] = winrt::Microsoft::ReactNative::JSValue(std::string(pe32.szExeFile));
+        app["pid"] = winrt::Microsoft::ReactNative::JSValue((int)pe32.th32ProcessID);
+        apps.push_back(winrt::Microsoft::ReactNative::JSValue(std::move(app)));
       } while (Process32Next(hSnapshot, &pe32));
     }
     CloseHandle(hSnapshot);
   }
 
-  promise.Resolve(vector);
+  winrt::Microsoft::ReactNative::JSValueObject result;
+  result["apps"] = winrt::Microsoft::ReactNative::JSValue(std::move(apps));
+  promise.Resolve(result);
 }
 
 void AppLauncherModule::setLaunchOnBoot(std::string packageName, bool enabled, winrt::Microsoft::ReactNative::ReactPromise<void> promise) noexcept {

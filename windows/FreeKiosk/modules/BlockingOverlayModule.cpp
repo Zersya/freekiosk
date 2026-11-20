@@ -1,58 +1,59 @@
 #include "pch.h"
 #include "BlockingOverlayModule.h"
 
-#include <winrt/Windows.Foundation.Collections.h>
+#include "NativeModules.h"
+#include "JSValue.h"
 
 #include <map>
 #include <mutex>
 
 namespace winrt::FreeKiosk::implementation {
 
-using namespace winrt;
-using namespace Windows::Foundation;
-using namespace Windows::Foundation::Collections;
+using namespace winrt::Microsoft::ReactNative;
 
-static std::map<int, IInspectable> g_overlays;
+static std::map<int, JSValueObject> g_overlays;
 static std::mutex g_overlaysMutex;
 
 void BlockingOverlayModule::Initialize(winrt::Microsoft::ReactNative::ReactContext const &reactContext) noexcept {
   m_reactContext = reactContext;
 }
 
-void BlockingOverlayModule::showOverlay(int id, int x, int y, int width, int height, std::string color, winrt::Microsoft::ReactNative::ReactPromise<void> promise) noexcept {
+void BlockingOverlayModule::showOverlay(int id, int x, int y, int width, int height, std::string color, ReactPromise<void> promise) noexcept {
   std::lock_guard<std::mutex> lock(g_overlaysMutex);
 
-  auto map = winrt::make<Windows::Foundation::Collections::PropertySet>();
-  map.Insert(L"id", winrt::box_value(id));
-  map.Insert(L"x", winrt::box_value(x));
-  map.Insert(L"y", winrt::box_value(y));
-  map.Insert(L"width", winrt::box_value(width));
-  map.Insert(L"height", winrt::box_value(height));
-  map.Insert(L"color", winrt::box_value(std::wstring(color.begin(), color.end())));
+  JSValueObject overlay;
+  overlay["id"] = JSValue(id);
+  overlay["x"] = JSValue(x);
+  overlay["y"] = JSValue(y);
+  overlay["width"] = JSValue(width);
+  overlay["height"] = JSValue(height);
+  overlay["color"] = JSValue(color);
 
-  g_overlays[id] = map;
+  g_overlays[id] = std::move(overlay);
   promise.Resolve();
 }
 
-void BlockingOverlayModule::hideOverlay(int id, winrt::Microsoft::ReactNative::ReactPromise<void> promise) noexcept {
+void BlockingOverlayModule::hideOverlay(int id, ReactPromise<void> promise) noexcept {
   std::lock_guard<std::mutex> lock(g_overlaysMutex);
   g_overlays.erase(id);
   promise.Resolve();
 }
 
-void BlockingOverlayModule::clearOverlays(winrt::Microsoft::ReactNative::ReactPromise<void> promise) noexcept {
+void BlockingOverlayModule::clearOverlays(ReactPromise<void> promise) noexcept {
   std::lock_guard<std::mutex> lock(g_overlaysMutex);
   g_overlays.clear();
   promise.Resolve();
 }
 
-void BlockingOverlayModule::getOverlays(winrt::Microsoft::ReactNative::ReactPromise<IInspectable> promise) noexcept {
+void BlockingOverlayModule::getOverlays(ReactPromise<JSValueObject> promise) noexcept {
   std::lock_guard<std::mutex> lock(g_overlaysMutex);
-  auto vector = winrt::make<Windows::Foundation::Collections::IVector<IInspectable>>();
+  JSValueObject result;
+  JSValueArray overlays;
   for (auto& [id, overlay] : g_overlays) {
-    vector.Append(overlay);
+    overlays.push_back(JSValue(overlay.Copy()));
   }
-  promise.Resolve(vector);
+  result["overlays"] = JSValue(std::move(overlays));
+  promise.Resolve(result);
 }
 
 } // namespace winrt::FreeKiosk::implementation
