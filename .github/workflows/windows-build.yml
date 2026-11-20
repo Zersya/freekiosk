@@ -28,16 +28,6 @@ jobs:
         shell: pwsh
         run: reg add "HKLM\SOFTWARE\Microsoft\Windows\CurrentVersion\AppModelUnlock" /t REG_DWORD /f /v AllowDevelopmentWithoutDevLicense /d 1
 
-      - name: Install Windows App SDK dependencies
-        shell: pwsh
-        run: |
-          $script = "node_modules\react-native-windows\scripts\rnw-dependencies.ps1"
-          if (Test-Path $script) {
-            & $script -Tags vs2022,appDev
-          } else {
-            Write-Host "rnw-dependencies.ps1 not found, skipping"
-          }
-
       - name: Bundle JS for Windows
         shell: pwsh
         run: npx react-native bundle --platform windows --dev false --entry-file index.js --bundle-output "$env:RUNNER_TEMP\index.windows.bundle"
