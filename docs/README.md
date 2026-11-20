@@ -94,6 +94,7 @@ adb shell dpm set-device-owner com.freekiosk/.DeviceAdminReceiver
 | Guide | Description | Link |
 |-------|-------------|------|
 | **Development** | Build and contribute to FreeKiosk | [Read →](Development) |
+| **Desktop Support** | Windows/macOS feasibility and porting roadmap | [Read →](Desktop-Support) |
 | **Roadmap & Changelog** | Release notes and future plans | [Read →](Roadmap-and-Changelog) |
 | **Wiki Sync** | How documentation is published | [Read →](Pipeline-and-Wiki-Sync) |
 
