@@ -105,10 +105,36 @@
     <ClInclude Include="AutolinkedNativeModules.g.h" />
     <ClInclude Include="pch.h" />
     <ClInclude Include="targetver.h" />
+    <ClInclude Include="modules/TcpSocketModule.h" />
+    <ClInclude Include="modules/KioskModule.h" />
+    <ClInclude Include="modules/AppLauncherModule.h" />
+    <ClInclude Include="modules/SystemInfoModule.h" />
+    <ClInclude Include="modules/AudioControlModule.h" />
+    <ClInclude Include="modules/ScreenshotModule.h" />
+    <ClInclude Include="modules/InputInjectionModule.h" />
+    <ClInclude Include="modules/KeychainModule.h" />
+    <ClInclude Include="modules/FilePickerModule.h" />
+    <ClInclude Include="modules/BlockingOverlayModule.h" />
+    <ClInclude Include="modules/OverlayServiceModule.h" />
+    <ClInclude Include="modules/HttpServerModule.h" />
+    <ClInclude Include="modules/Win32Util.h" />
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="FreeKiosk.cpp" />
     <ClCompile Include="AutolinkedNativeModules.g.cpp" />
+    <ClCompile Include="modules/TcpSocketModule.cpp" />
+    <ClCompile Include="modules/KioskModule.cpp" />
+    <ClCompile Include="modules/AppLauncherModule.cpp" />
+    <ClCompile Include="modules/SystemInfoModule.cpp" />
+    <ClCompile Include="modules/AudioControlModule.cpp" />
+    <ClCompile Include="modules/ScreenshotModule.cpp" />
+    <ClCompile Include="modules/InputInjectionModule.cpp" />
+    <ClCompile Include="modules/KeychainModule.cpp" />
+    <ClCompile Include="modules/FilePickerModule.cpp" />
+    <ClCompile Include="modules/BlockingOverlayModule.cpp" />
+    <ClCompile Include="modules/OverlayServiceModule.cpp" />
+    <ClCompile Include="modules/HttpServerModule.cpp" />
+    <ClCompile Include="modules/Win32Util.cpp" />
     <ClCompile Include="pch.cpp">
       <PrecompiledHeader Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">Create</PrecompiledHeader>
       <PrecompiledHeader Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">Create</PrecompiledHeader>

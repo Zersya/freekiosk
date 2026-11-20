@@ -5,8 +5,20 @@
 #include "FreeKiosk.h"
 
 #include "AutolinkedNativeModules.g.h"
-
 #include "NativeModules.h"
+#include "modules/TcpSocketModule.h"
+#include "modules/KioskModule.h"
+#include "modules/AppLauncherModule.h"
+#include "modules/SystemInfoModule.h"
+#include "modules/AudioControlModule.h"
+#include "modules/ScreenshotModule.h"
+#include "modules/InputInjectionModule.h"
+#include "modules/KeychainModule.h"
+#include "modules/FilePickerModule.h"
+#include "modules/BlockingOverlayModule.h"
+#include "modules/OverlayServiceModule.h"
+#include "modules/HttpServerModule.h"
+#include "modules/Win32Util.h"
 
 // A PackageProvider containing any turbo modules you define within this app project
 struct CompReactPackageProvider
