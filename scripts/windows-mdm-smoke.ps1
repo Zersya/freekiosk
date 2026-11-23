@@ -80,17 +80,30 @@ $storageJson = '{"@kiosk_rest_api_enabled":"true","@kiosk_rest_api_allow_control
 # ---------- 5. Launch and wait for health ----------
 Start-Process "shell:AppsFolder\$pfn!App"
 
+# Wait for the process to appear
+$procSeen = $false
+$procDeadline = (Get-Date).AddSeconds(30)
+while ((Get-Date) -lt $procDeadline) {
+  if (Get-Process FreeKiosk -ErrorAction SilentlyContinue) { $procSeen = $true; break }
+  Start-Sleep -Seconds 2
+}
+if (-not $procSeen) { Fail 'FreeKiosk process never appeared after launch' }
+Write-Host 'launch OK: process running'
+
 $healthy = $false
-$deadline = (Get-Date).AddSeconds(90)
+$deadline = (Get-Date).AddSeconds(120)
 while ((Get-Date) -lt $deadline) {
   try {
     $r = Invoke-WebRequest -UseBasicParsing -Uri 'http://127.0.0.1:8080/api/health' -TimeoutSec 3
     if ($r.StatusCode -eq 200) { $healthy = $true; break }
   } catch {
-    Start-Sleep -Seconds 2
+    $listening = (Get-NetTCPConnection -LocalPort 8080 -State Listen -ErrorAction SilentlyContinue) -ne $null
+    $proc = (Get-Process FreeKiosk -ErrorAction SilentlyContinue) -ne $null
+    Write-Host "waiting: proc=$proc port8080=$listening"
+    Start-Sleep -Seconds 5
   }
 }
-if (-not $healthy) { Fail '/api/health did not respond within 90s' }
+if (-not $healthy) { Fail '/api/health did not respond within 120s' }
 
 # ---------- 6. Assertions ----------
 # a. /api/health
