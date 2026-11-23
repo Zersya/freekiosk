@@ -77,15 +77,18 @@ jobs:
           @'
           # TransKIOSK for Windows (test build)
 
-          1. Extract the zip / download all files into one folder.
-          2. Right-click Install.ps1 -> Run with PowerShell (as Administrator).
-             It trusts FreeKioskTestCert.cer and installs TransKIOSK.msixbundle.
-          3. Launch "TransKIOSK" from the Start menu.
+          If Install.ps1 says "not digitally signed", the PowerShell execution
+          policy is blocking unsigned scripts. Either unblock it:
 
-          Alternatively, without the script:
-            - Double-click FreeKioskTestCert.cer -> Install Certificate -> Local Machine
-              -> Place all certificates in: Trusted People.
-            - Then double-click TransKIOSK.msixbundle -> Install.
+            Unblock-File .\Install.ps1 ; .\Install.ps1
+            # or: powershell -ExecutionPolicy Bypass -File .\Install.ps1
+
+          Or run what the script does yourself in ADMINISTRATOR PowerShell:
+
+            Import-Certificate -FilePath .\FreeKioskTestCert.cer -CertStoreLocation Cert:\LocalMachine\TrustedPeople
+            Add-AppxPackage -Path .\TransKIOSK.msixbundle
+
+          Then launch "TransKIOSK" from the Start menu.
 
           Requires: Windows 10 1809+ or Windows 11, sideloading or Developer Mode enabled.
           '@ | Set-Content -Encoding utf8 .\README-Windows.txt
