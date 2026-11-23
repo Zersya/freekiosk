@@ -108,6 +108,9 @@ if (-not $healthy) {
   if (Test-Path $dbg) { Write-Host '--- freekiosk_debug.log ---'; Get-Content $dbg | ForEach-Object { Write-Host $_ } } else { Write-Host 'no freekiosk_debug.log' }
   $stor = Join-Path $env:LOCALAPPDATA "Packages\$pfn\LocalState\freekiosk_storage.json"
   if (Test-Path $stor) { Write-Host '--- storage ---'; Write-Host (Get-Content $stor -Raw) }
+  $boot = Join-Path $env:LOCALAPPDATA "Packages\$pfn\LocalState\freekiosk_boot.log"
+  if (Test-Path $boot) { Write-Host '--- freekiosk_boot.log ---'; Write-Host (Get-Content $boot -Raw) } else { Write-Host 'no freekiosk_boot.log' }
+  Write-Host '--- LocalState ---'; Get-ChildItem (Join-Path $env:LOCALAPPDATA "Packages\$pfn\LocalState") | ForEach-Object { Write-Host $_.Name }
   Fail '/api/health did not respond within 120s'
 }
 
