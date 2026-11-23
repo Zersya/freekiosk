@@ -20,6 +20,8 @@
 #include "modules/HttpServerModule.h"
 #include "modules/Win32Util.h"
 #include "modules/Base64.h"
+#include <fstream>
+#include <filesystem>
 #include "modules/ScreenCapture.h"
 #include "modules/PackageInstallModule.h"
 
@@ -44,6 +46,15 @@ _Use_decl_annotations_ int CALLBACK WinMain(HINSTANCE instance, HINSTANCE, PSTR 
   WCHAR appDirectory[MAX_PATH];
   GetModuleFileNameW(NULL, appDirectory, MAX_PATH);
   PathCchRemoveFileSpec(appDirectory, MAX_PATH);
+
+
+  // TEMP diagnostic: prove WinMain ran
+  {
+    std::ofstream bootFile(std::filesystem::path(
+        winrt::Windows::Storage::ApplicationData::Current().LocalFolder().Path().c_str()) / "freekiosk_winmain.log",
+        std::ios::app);
+    bootFile << "WinMain entered" << std::endl;
+  }
 
   // Create a ReactNativeWin32App with the ReactNativeAppBuilder
   auto reactNativeWin32App{winrt::Microsoft::ReactNative::ReactNativeAppBuilder().Build()};
