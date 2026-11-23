@@ -103,7 +103,13 @@ while ((Get-Date) -lt $deadline) {
     Start-Sleep -Seconds 5
   }
 }
-if (-not $healthy) { Fail '/api/health did not respond within 120s' }
+if (-not $healthy) {
+  $dbg = Join-Path $env:LOCALAPPDATA "Packages\$pfn\LocalState\freekiosk_debug.log"
+  if (Test-Path $dbg) { Write-Host '--- freekiosk_debug.log ---'; Get-Content $dbg | ForEach-Object { Write-Host $_ } } else { Write-Host 'no freekiosk_debug.log' }
+  $stor = Join-Path $env:LOCALAPPDATA "Packages\$pfn\LocalState\freekiosk_storage.json"
+  if (Test-Path $stor) { Write-Host '--- storage ---'; Write-Host (Get-Content $stor -Raw) }
+  Fail '/api/health did not respond within 120s'
+}
 
 # ---------- 6. Assertions ----------
 # a. /api/health

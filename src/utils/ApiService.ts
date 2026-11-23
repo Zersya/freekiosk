@@ -116,8 +116,20 @@ class ApiServiceClass {
    * Start the API server if enabled in settings
    */
   async autoStart(): Promise<void> {
+    const log = (m: string) => {
+      console.log(m);
+      try {
+        const KioskModule = NativeModules.KioskModule;
+        if (KioskModule?.readFile && KioskModule?.writeFile) {
+          KioskModule.readFile('freekiosk_debug.log')
+            .then((prev: string) => KioskModule.writeFile('freekiosk_debug.log', prev + m + '\n'))
+            .catch(() => KioskModule.writeFile('freekiosk_debug.log', m + '\n'));
+        }
+      } catch {}
+    };
     try {
       const enabled = await StorageService.getRestApiEnabled();
+      log(`ApiService: restApiEnabled=${enabled}`);
       if (!enabled) {
         console.log('ApiService: REST API disabled in settings');
         return;
@@ -126,11 +138,13 @@ class ApiServiceClass {
       const port = await StorageService.getRestApiPort();
       const apiKey = await StorageService.getRestApiKey();
       const allowControl = await StorageService.getRestApiAllowControl();
+      log(`ApiService: starting port=${port} key=${apiKey ? 'set' : 'none'} control=${allowControl}`);
 
       const result = await httpServer.startServer(port, apiKey || null, allowControl);
-      console.log(`ApiService: Server started on ${result.ip}:${result.port}`);
+      log(`ApiService: Server started on ${result.ip}:${result.port}`);
     } catch (error) {
       console.error('ApiService: Failed to auto-start server', error);
+      log(`ApiService: autostart error: ${(error as Error).message}`);
     }
   }
 
