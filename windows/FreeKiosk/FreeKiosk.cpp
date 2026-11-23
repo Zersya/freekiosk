@@ -112,6 +112,14 @@ _Use_decl_annotations_ int CALLBACK WinMain(HINSTANCE instance, HINSTANCE, PSTR 
   viewOptions.ComponentName(L"FreeKiosk");
   mark("view options set, calling Start()");
 
+  // TEMP diagnostic: start the JS instance before Start(), in case
+  // AppWindow.Show() blocks on a non-interactive session.
+  reactNativeWin32App.ReactNativeHost().InstanceSettings().Properties().Set(
+      winrt::Microsoft::ReactNative::ReactDispatcherHelper::UIDispatcherProperty(),
+      winrt::Microsoft::ReactNative::ReactDispatcherHelper::UIThreadDispatcher());
+  reactNativeWin32App.ReactNativeHost().ReloadInstance();
+  mark("ReloadInstance() returned");
+
   // Start the app
   reactNativeWin32App.Start();
 
