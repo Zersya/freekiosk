@@ -110,7 +110,7 @@ void PackageInstallModule::downloadFile(std::string url, std::string fileName,
       int uriLen = MultiByteToWideChar(CP_UTF8, 0, url.c_str(), static_cast<int>(url.size()), nullptr, 0);
       std::wstring wideUrl(static_cast<size_t>(uriLen), L'\0');
       MultiByteToWideChar(CP_UTF8, 0, url.c_str(), static_cast<int>(url.size()), wideUrl.data(), uriLen);
-      Uri uri(winrt::hstring(wideUrl));
+      Uri uri{winrt::hstring(wideUrl)};
 
       auto response = client.GetAsync(uri, HttpCompletionOption::ResponseHeadersRead).get();
       auto statusCode = static_cast<int>(response.StatusCode());
@@ -177,7 +177,7 @@ void PackageInstallModule::installPackage(std::string path,
       std::wstring uriPath = L"file:///" + widePath;
 
       PackageManager manager;
-      Uri uri(winrt::hstring(uriPath));
+      Uri uri{winrt::hstring(uriPath)};
       auto result = manager.AddPackageAsync(uri, nullptr, DeploymentOptions::ForceTargetApplicationShutdown).get();
 
       auto errorText = WideToUtf8(result.ErrorText());
