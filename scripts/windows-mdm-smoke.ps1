@@ -66,6 +66,10 @@ function Get-AppxPkg([string]$name) {
   return $null
 }
 
+# Deploy step may have left the app running; kill it so it re-reads seeded settings.
+Get-Process FreeKiosk -ErrorAction SilentlyContinue | Stop-Process -Force -ErrorAction SilentlyContinue
+Start-Sleep -Seconds 2
+
 $pfn = Get-AppxPkg 'FreeKiosk'
 if (-not $pfn) { Fail 'FreeKiosk package not installed' }
 $localState = Join-Path $env:LOCALAPPDATA "Packages\$pfn\LocalState"
