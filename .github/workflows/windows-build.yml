@@ -91,6 +91,23 @@ jobs:
           Then launch "TransKIOSK" from the Start menu.
 
           Requires: Windows 10 1809+ or Windows 11, sideloading or Developer Mode enabled.
+
+          ## Uninstall / revert
+
+          Run in ADMINISTRATOR PowerShell:
+
+            # Remove the app (or Settings -> Apps -> TransKIOSK -> Uninstall)
+            Remove-AppxPackage -Package (Get-AppxPackage -Name FreeKiosk).PackageFullName
+
+            # Remove the test certificate
+            Get-ChildItem Cert:\LocalMachine\TrustedPeople |
+              Where-Object Subject -eq "CN=FreeKiosk" | Remove-Item
+
+            # Only if you ran Set-ExecutionPolicy earlier: restore the default
+            Set-ExecutionPolicy Restricted
+
+          Note: Unblock-File and "powershell -ExecutionPolicy Bypass -File" are
+          per-file / per-process and leave nothing behind to revert.
           '@ | Set-Content -Encoding utf8 .\README-Windows.txt
 
       - name: Upload Windows installer
