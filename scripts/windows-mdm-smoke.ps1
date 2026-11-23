@@ -57,7 +57,16 @@ $pyServer = Start-Process python -ArgumentList '-m','http.server','8090','--bind
 try {
 
 # ---------- 4. Seed settings ----------
-$pfn = (Get-AppxPackage -Name FreeKiosk).PackageFamilyName
+# Appx cmdlets only load in Windows PowerShell 5.1 (pwsh 7 cannot import the Appx module).
+function Get-AppxPkg([string]$name) {
+  $out = powershell -NoProfile -NonInteractive -Command "Get-AppxPackage -Name '$name' | ForEach-Object { `$_.PackageFamilyName }" 2>$null
+  if ($LASTEXITCODE -ne 0) { return $null }
+  $line = ($out | Where-Object { $_ -match '\S' } | Select-Object -First 1)
+  if ($line) { return $line.Trim() }
+  return $null
+}
+
+$pfn = Get-AppxPkg 'FreeKiosk'
 if (-not $pfn) { Fail 'FreeKiosk package not installed' }
 $localState = Join-Path $env:LOCALAPPDATA "Packages\$pfn\LocalState"
 New-Item -ItemType Directory -Force -Path $localState | Out-Null
@@ -137,7 +146,7 @@ Write-Host 'e OK: tap'
 $installBody = (@{appId='';downloadUrl='http://127.0.0.1:8090/smoke.msix';fileName='smoke.msix';packageName='FreeKioskSmokeApp';sha256=$sha;versionCode=1002003} | ConvertTo-Json -Compress)
 $install = (Invoke-WebRequest -UseBasicParsing -Uri 'http://127.0.0.1:8080/api/app/install' -Method POST -Body $installBody -ContentType 'application/json' -TimeoutSec 180).Content | ConvertFrom-Json
 if ($install.data.status -ne 'installed') { Fail "install status = $($install.data.status) error=$($install.data.error)" }
-$installed = Get-AppxPackage -Name FreeKioskSmokeApp
+$installed = Get-AppxPkg 'FreeKioskSmokeApp'
 if ($null -eq $installed) { Fail 'FreeKioskSmokeApp not found after install' }
 Write-Host 'f OK: install'
 
@@ -153,7 +162,7 @@ Write-Host 'g OK: inventory'
 $uninstallBody = '{"packageName":"FreeKioskSmokeApp"}'
 $uninstall = (Invoke-WebRequest -UseBasicParsing -Uri 'http://127.0.0.1:8080/api/app/uninstall' -Method POST -Body $uninstallBody -ContentType 'application/json' -TimeoutSec 120).Content | ConvertFrom-Json
 if ($uninstall.data.status -ne 'uninstalled') { Fail "uninstall status = $($uninstall.data.status)" }
-$still = Get-AppxPackage -Name FreeKioskSmokeApp
+$still = Get-AppxPkg 'FreeKioskSmokeApp'
 if ($null -ne $still) { Fail 'FreeKioskSmokeApp still installed after uninstall' }
 Write-Host 'h OK: uninstall'
 
