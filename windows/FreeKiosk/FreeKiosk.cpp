@@ -120,6 +120,9 @@ _Use_decl_annotations_ int CALLBACK WinMain(HINSTANCE instance, HINSTANCE, PSTR 
   reactNativeWin32App.ReactNativeHost().ReloadInstance();
   mark("ReloadInstance() returned");
 
+  reactNativeWin32App.AppWindow().Show();
+  mark("AppWindow.Show() returned");
+
   // Start the app
   reactNativeWin32App.Start();
 
