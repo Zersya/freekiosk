@@ -50,7 +50,7 @@ jobs:
       - name: Build and sign MSIX package
         shell: pwsh
         run: |
-          msbuild windows\FreeKiosk.Package\FreeKiosk.Package.wapproj /p:Configuration=Release /p:Platform=x64 /p:UapAppxPackageBuildMode=SideloadOnly /p:AppxBundle=Always /p:GenerateAppxPackageOnBuild=true /p:AppxPackageSigningEnabled=false /restore /v:m
+          msbuild windows\FreeKiosk.sln /p:Configuration=Release /p:Platform=x64 /p:UapAppxPackageBuildMode=SideloadOnly /p:AppxBundle=Always /p:GenerateAppxPackageOnBuild=true /p:AppxPackageSigningEnabled=false /restore /v:m
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           $cert = New-SelfSignedCertificate -Type Custom -Subject "CN=FreeKiosk" -KeyUsage DigitalSignature -FriendlyName "FreeKiosk Test" -CertStoreLocation Cert:\CurrentUser\My -TextExtension @("2.5.29.37={text}1.3.6.1.5.5.7.3.3", "2.5.29.19={text}")
           $pwd = ConvertTo-SecureString -String "FreeKiosk" -Force -AsPlainText
