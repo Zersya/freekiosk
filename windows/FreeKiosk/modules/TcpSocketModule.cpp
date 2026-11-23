@@ -247,12 +247,10 @@ void TcpSocketModule::startMjpegStream(int socketId, int intervalMs, int quality
 
   promise.Resolve();
 
-  std::thread([this, socketId, intervalMs, quality, maxDimension, state]() {
+  std::thread([this, socketId, intervalMsParam = intervalMs, quality, maxDimension, state]() {
     winrt::init_apartment(winrt::apartment_type::multi_threaded);
 
-    if (intervalMs <= 0) {
-      intervalMs = 250;
-    }
+    int intervalMs = intervalMsParam <= 0 ? 250 : intervalMsParam;
 
     while (m_mjpegSocketId.load() == socketId && !state->closed.load()) {
       auto tickStart = std::chrono::steady_clock::now();
