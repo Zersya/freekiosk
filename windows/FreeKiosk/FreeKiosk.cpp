@@ -48,16 +48,21 @@ _Use_decl_annotations_ int CALLBACK WinMain(HINSTANCE instance, HINSTANCE, PSTR 
   PathCchRemoveFileSpec(appDirectory, MAX_PATH);
 
 
-  // TEMP diagnostic: prove WinMain ran
-  {
-    std::ofstream bootFile(std::filesystem::path(
-        winrt::Windows::Storage::ApplicationData::Current().LocalFolder().Path().c_str()) / "freekiosk_winmain.log",
-        std::ios::app);
-    bootFile << "WinMain entered" << std::endl;
-  }
+  // TEMP diagnostic: prove WinMain ran / stage markers
+  auto mark = [](const char *stage) {
+    try {
+      std::ofstream f(std::filesystem::path(
+          winrt::Windows::Storage::ApplicationData::Current().LocalFolder().Path().c_str()) / "freekiosk_winmain.log",
+          std::ios::app);
+      f << stage << std::endl;
+    } catch (...) {
+    }
+  };
+  mark("WinMain entered");
 
   // Create a ReactNativeWin32App with the ReactNativeAppBuilder
   auto reactNativeWin32App{winrt::Microsoft::ReactNative::ReactNativeAppBuilder().Build()};
+  mark("host built");
 
   // Configure the initial InstanceSettings for the app's ReactNativeHost
   auto settings{reactNativeWin32App.ReactNativeHost().InstanceSettings()};
@@ -65,6 +70,7 @@ _Use_decl_annotations_ int CALLBACK WinMain(HINSTANCE instance, HINSTANCE, PSTR 
   RegisterAutolinkedNativeModulePackages(settings.PackageProviders());
   // Register any native modules defined within this app project
   settings.PackageProviders().Append(winrt::make<CompReactPackageProvider>());
+  mark("providers appended");
 
 #if BUNDLE
   // Load the JS bundle from a file (not Metro):
@@ -96,12 +102,15 @@ _Use_decl_annotations_ int CALLBACK WinMain(HINSTANCE instance, HINSTANCE, PSTR 
 
   // Get the AppWindow so we can configure its initial title and size
   auto appWindow{reactNativeWin32App.AppWindow()};
+  mark("AppWindow got");
   appWindow.Title(L"FreeKiosk");
   appWindow.Resize({1000, 1000});
+  mark("AppWindow resized");
 
   // Get the ReactViewOptions so we can set the initial RN component to load
   auto viewOptions{reactNativeWin32App.ReactViewOptions()};
   viewOptions.ComponentName(L"FreeKiosk");
+  mark("view options set, calling Start()");
 
   // Start the app
   reactNativeWin32App.Start();
