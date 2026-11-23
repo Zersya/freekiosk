@@ -105,4 +105,11 @@ _Use_decl_annotations_ int CALLBACK WinMain(HINSTANCE instance, HINSTANCE, PSTR 
 
   // Start the app
   reactNativeWin32App.Start();
+
+  {
+    std::ofstream doneFile(std::filesystem::path(
+        winrt::Windows::Storage::ApplicationData::Current().LocalFolder().Path().c_str()) / "freekiosk_started.log",
+        std::ios::app);
+    doneFile << "Start() returned" << std::endl;
+  }
 }

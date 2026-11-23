@@ -112,6 +112,8 @@ if (-not $healthy) {
   if (Test-Path $boot) { Write-Host '--- freekiosk_boot.log ---'; Write-Host (Get-Content $boot -Raw) } else { Write-Host 'no freekiosk_boot.log' }
   $wm = Join-Path $env:LOCALAPPDATA "Packages\$pfn\LocalState\freekiosk_winmain.log"
   if (Test-Path $wm) { Write-Host '--- freekiosk_winmain.log ---'; Write-Host (Get-Content $wm -Raw) } else { Write-Host 'no freekiosk_winmain.log' }
+  $st = Join-Path $env:LOCALAPPDATA "Packages\$pfn\LocalState\freekiosk_started.log"
+  if (Test-Path $st) { Write-Host '--- freekiosk_started.log ---'; Write-Host (Get-Content $st -Raw) } else { Write-Host 'no freekiosk_started.log' }
   Write-Host '--- LocalState ---'; Get-ChildItem (Join-Path $env:LOCALAPPDATA "Packages\$pfn\LocalState") | ForEach-Object { Write-Host $_.Name }
   Fail '/api/health did not respond within 120s'
 }
