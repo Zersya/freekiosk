@@ -11,6 +11,7 @@
 #define WIN32_LEAN_AND_MEAN 1
 #define WINRT_LEAN_AND_MEAN 1
 
+#define _SILENCE_CXX20_U8PATH_DEPRECATION_WARNING
 // Windows Header Files
 #include <windows.h>
 #undef GetCurrentTime
@@ -22,11 +23,13 @@
 #include <winrt/Windows.Foundation.h>
 #include <winrt/Windows.ApplicationModel.h>
 #include <winrt/Windows.Management.Deployment.h>
+#include <winrt/Windows.Foundation.Collections.h>
 #include <winrt/Windows.Storage.h>
 #include <winrt/Windows.Storage.Streams.h>
 #include <winrt/Windows.Web.Http.h>
 #include <winrt/Windows.Security.Cryptography.h>
 #include <winrt/Windows.Security.Cryptography.Core.h>
+#include <winrt/Windows.Web.Http.Headers.h>
 #include <winrt/base.h>
 
 #include <CppWinRTIncludes.h>
