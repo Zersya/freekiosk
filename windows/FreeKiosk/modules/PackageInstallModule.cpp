@@ -130,7 +130,7 @@ void PackageInstallModule::downloadFile(std::string url, std::string fileName,
       auto hash = hashProvider.CreateHash();
 
       uint64_t totalBytes = 0;
-      Buffer buffer(64 * 1024);
+      IBuffer buffer = Buffer(64 * 1024);
       while (true) {
         buffer = inputStream.ReadAsync(buffer, buffer.Capacity(), InputStreamOptions::None).get();
         if (buffer.Length() == 0) {
