@@ -124,3 +124,55 @@ describe('ByteBuffer', () => {
     });
   });
 });
+
+import {
+  utf8Encode,
+  utf8Decode,
+  base64Encode,
+  base64Decode,
+  base64ByteLength,
+  bytesToBinaryString,
+  binaryStringToBytes,
+} from '../../src/platform/windows/net/bytes';
+
+describe('utf8Encode/utf8Decode', () => {
+  it('round-trips multibyte characters', () => {
+    const s = 'é漢🙂';
+    expect(utf8Decode(utf8Encode(s))).toBe(s);
+  });
+
+  it('encodes ASCII as single bytes', () => {
+    expect(Array.from(utf8Encode('abc'))).toEqual([0x61, 0x62, 0x63]);
+  });
+});
+
+describe('base64', () => {
+  it('round-trips all byte values 0..255', () => {
+    const bytes = new Uint8Array(256);
+    for (let i = 0; i < 256; i++) bytes[i] = i;
+    expect(base64Decode(base64Encode(bytes))).toEqual(bytes);
+  });
+
+  it('computes byte length', () => {
+    expect(base64ByteLength('AAA=')).toBe(2);
+    expect(base64ByteLength('AA==')).toBe(1);
+    expect(base64ByteLength('AAAA')).toBe(3);
+  });
+});
+
+describe('binary strings', () => {
+  it('converts bytes to a binary string', () => {
+    const s = bytesToBinaryString(new Uint8Array([0x48, 0x69]));
+    expect(s).toBe('Hi');
+  });
+
+  it('round-trips bytes through binary strings', () => {
+    const bytes = new Uint8Array([0, 1, 127, 255]);
+    expect(binaryStringToBytes(bytesToBinaryString(bytes))).toEqual(bytes);
+  });
+
+  it('throws on char > 0xFF', () => {
+    expect(() => binaryStringToBytes('Ā')).toThrow(RangeError);
+    expect(() => binaryStringToBytes('Ā')).toThrow('binary string contains char > 0xFF');
+  });
+});

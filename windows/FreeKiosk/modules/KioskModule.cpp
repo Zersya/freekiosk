@@ -270,8 +270,18 @@ void KioskModule::hideNotification(ReactPromise<void> promise) noexcept {
 }
 
 // File operations
+static std::filesystem::path ResolveAppPath(std::string const &p) {
+  std::filesystem::path path = std::filesystem::u8path(p);
+  if (path.is_absolute()) {
+    return path;
+  }
+  auto localPath = winrt::Windows::Storage::ApplicationData::Current().LocalFolder().Path();
+  return std::filesystem::path(localPath.c_str()) / path;
+}
+
 void KioskModule::readFile(std::string path, ReactPromise<std::string> promise) noexcept {
-  std::ifstream file(path, std::ios::binary);
+  auto resolved = ResolveAppPath(path);
+  std::ifstream file(resolved, std::ios::binary);
   if (!file.is_open()) {
     promise.Reject(("Failed to open file: " + path).c_str());
     return;
@@ -283,7 +293,13 @@ void KioskModule::readFile(std::string path, ReactPromise<std::string> promise) 
 }
 
 void KioskModule::writeFile(std::string path, std::string content, ReactPromise<void> promise) noexcept {
-  std::ofstream file(path, std::ios::binary | std::ios::trunc);
+  auto resolved = ResolveAppPath(path);
+  auto parent = resolved.parent_path();
+  if (!parent.empty()) {
+    std::error_code ec;
+    std::filesystem::create_directories(parent, ec);
+  }
+  std::ofstream file(resolved, std::ios::binary | std::ios::trunc);
   if (!file.is_open()) {
     promise.Reject(("Failed to open file for writing: " + path).c_str());
     return;
@@ -295,12 +311,12 @@ void KioskModule::writeFile(std::string path, std::string content, ReactPromise<
 }
 
 void KioskModule::fileExists(std::string path, ReactPromise<bool> promise) noexcept {
-  promise.Resolve(std::filesystem::exists(path));
+  promise.Resolve(std::filesystem::exists(ResolveAppPath(path)));
 }
 
 void KioskModule::deleteFile(std::string path, ReactPromise<void> promise) noexcept {
   try {
-    std::filesystem::remove(path);
+    std::filesystem::remove(ResolveAppPath(path));
     promise.Resolve();
   } catch (...) {
     promise.Reject(("Failed to delete file: " + path).c_str());

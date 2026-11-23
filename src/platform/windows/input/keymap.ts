@@ -190,3 +190,37 @@ export function getKeyName(vkCode: number): string | undefined {
   }
   return undefined;
 }
+
+// Remote-control key names (MDM Remote Assist / D-pad) -> Windows VK codes.
+export const REMOTE_KEY_VK: Record<string, number> = {
+  up: 0x26,
+  down: 0x28,
+  left: 0x25,
+  right: 0x27,
+  select: 0x0d,
+  center: 0x0d,
+  enter: 0x0d,
+  back: 0xa6,
+  home: 0xac,
+  menu: 0x5d,
+  playpause: 0xb3,
+  play: 0xb3,
+  pause: 0xb3,
+  stop: 0xb2,
+  next: 0xb0,
+  previous: 0xb1,
+  volumeup: 0xaf,
+  volumedown: 0xae,
+  mute: 0xad,
+};
+
+// Modifier aliases for keyboardCombo strings like "ctrl+c".
+export const MODIFIER_VK: Record<string, number> = {
+  ctrl: 0x11,
+  control: 0x11,
+  alt: 0x12,
+  shift: 0x10,
+  meta: 0x5b,
+  win: 0x5b,
+  cmd: 0x5b,
+};

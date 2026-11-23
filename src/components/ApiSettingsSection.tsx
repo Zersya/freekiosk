@@ -30,6 +30,8 @@ import MdmEnrollmentQrScanner from './MdmEnrollmentQrScanner';
 import type { MdmEnrollmentQrPayload } from '../utils/mdmEnrollmentQr';
 import { IS_WINDOWS } from '../platform/windows/isWindows';
 
+const MDM_AGENT_SUPPORTED = Platform.OS === 'android' || IS_WINDOWS;
+
 interface ApiSettingsSectionProps {
   onSettingsChanged?: () => void;
 }
@@ -76,7 +78,7 @@ export const ApiSettingsSection: React.FC<ApiSettingsSectionProps> = ({
       const captureActive = await screenCapture.isActive();
       setRemoteScreenshotActive(captureActive);
 
-      if (Platform.OS === 'android') {
+      if (MDM_AGENT_SUPPORTED) {
         const info = await mdmAgent.getAgentInfo();
         setMdmEnabled(info.enabled);
         setMdmWsUrl(info.wsUrl || '');
@@ -316,7 +318,7 @@ export const ApiSettingsSection: React.FC<ApiSettingsSectionProps> = ({
   };
 
   const handleMdmEnabledChange = async (enabled: boolean) => {
-    if (Platform.OS !== 'android') return;
+    if (!MDM_AGENT_SUPPORTED) return;
 
     setMdmLoading(true);
     try {
@@ -355,7 +357,7 @@ export const ApiSettingsSection: React.FC<ApiSettingsSectionProps> = ({
 
   const handleMdmWsUrlChange = async (value: string) => {
     setMdmWsUrl(value);
-    if (Platform.OS !== 'android') return;
+    if (!MDM_AGENT_SUPPORTED) return;
     try {
       await mdmAgent.configure(value.trim(), mdmEnrollToken.trim() || null);
     } catch (_) {
@@ -365,7 +367,7 @@ export const ApiSettingsSection: React.FC<ApiSettingsSectionProps> = ({
 
   const handleMdmEnrollTokenChange = async (value: string) => {
     setMdmEnrollToken(value);
-    if (Platform.OS !== 'android') return;
+    if (!MDM_AGENT_SUPPORTED) return;
     try {
       await mdmAgent.configure(mdmWsUrl.trim(), value.trim() || null);
       if (mdmEnabled && value.trim()) {
@@ -631,7 +633,7 @@ export const ApiSettingsSection: React.FC<ApiSettingsSectionProps> = ({
       )}
     </SettingsSection>
 
-    {Platform.OS === 'android' && (
+    {MDM_AGENT_SUPPORTED && (
       <SettingsSection
         title="MDM Agent (Outbound)"
         icon="cloud-sync"
@@ -667,7 +669,7 @@ export const ApiSettingsSection: React.FC<ApiSettingsSectionProps> = ({
           )}
         </View>
 
-        {!mdmEnrolled && (
+        {!mdmEnrolled && !IS_WINDOWS && (
           <TouchableOpacity
             style={styles.scanQrButton}
             onPress={() => setShowMdmQrScanner(true)}
@@ -694,7 +696,7 @@ export const ApiSettingsSection: React.FC<ApiSettingsSectionProps> = ({
           </Text>
         </TouchableOpacity>
 
-        {mdmEnrolled && (
+        {mdmEnrolled && !IS_WINDOWS && (
           <TouchableOpacity
             style={styles.installerButton}
             onPress={() => navigation.navigate('Installer')}

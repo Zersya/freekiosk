@@ -19,6 +19,15 @@
 
 // WinRT Header Files
 #include <winrt/base.h>
+#include <winrt/Windows.Foundation.h>
+#include <winrt/Windows.ApplicationModel.h>
+#include <winrt/Windows.Management.Deployment.h>
+#include <winrt/Windows.Storage.h>
+#include <winrt/Windows.Storage.Streams.h>
+#include <winrt/Windows.Web.Http.h>
+#include <winrt/Windows.Security.Cryptography.h>
+#include <winrt/Windows.Security.Cryptography.Core.h>
+#include <winrt/base.h>
 
 #include <CppWinRTIncludes.h>
 #include <winrt/Microsoft.ReactNative.Composition.h>

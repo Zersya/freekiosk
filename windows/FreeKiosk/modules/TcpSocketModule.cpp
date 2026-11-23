@@ -1,8 +1,13 @@
 #include "pch.h"
 #include "TcpSocketModule.h"
+#include "Base64.h"
+#include "ScreenCapture.h"
 
+#include <chrono>
 
 namespace winrt::FreeKiosk::implementation {
+
+using namespace winrt::Microsoft::ReactNative;
 
 void TcpSocketModule::Initialize(winrt::Microsoft::ReactNative::ReactContext const &reactContext) noexcept {
   m_reactContext = reactContext;
@@ -19,26 +24,45 @@ void TcpSocketModule::InitializeWinsock() noexcept {
 }
 
 void TcpSocketModule::Cleanup() noexcept {
-  std::lock_guard<std::mutex> lock(m_mutex);
+  std::map<int, std::shared_ptr<SocketState>> sockets;
+  {
+    std::lock_guard<std::mutex> lock(m_mutex);
+    sockets.swap(m_sockets);
+    for (auto &[id, socket] : m_servers) {
+      if (socket != INVALID_SOCKET) {
+        closesocket(socket);
+      }
+    }
+    m_servers.clear();
+  }
 
-  for (auto& [id, info] : m_sockets) {
-    if (info.socket != INVALID_SOCKET) {
-      closesocket(info.socket);
+  for (auto &[id, state] : sockets) {
+    std::lock_guard<std::mutex> writeLock(state->writeMutex);
+    state->closed = true;
+    if (state->socket != INVALID_SOCKET) {
+      closesocket(state->socket);
+      state->socket = INVALID_SOCKET;
     }
   }
-  m_sockets.clear();
-
-  for (auto& [id, socket] : m_servers) {
-    if (socket != INVALID_SOCKET) {
-      closesocket(socket);
-    }
-  }
-  m_servers.clear();
 
   if (m_wsaInitialized) {
     WSACleanup();
     m_wsaInitialized = false;
   }
+}
+
+void TcpSocketModule::Emit(std::wstring_view name, JSValueObject &&payload) noexcept {
+  m_reactContext.JSDispatcher().Post([ctx = m_reactContext, name = std::wstring(name),
+                                      p = std::make_shared<JSValueObject>(std::move(payload))]() {
+    ctx.EmitJSEvent(L"RCTDeviceEventEmitter", name, JSValue(std::move(*p)));
+  });
+}
+
+void TcpSocketModule::EmitSocketError(int socketId, std::string const &message) noexcept {
+  JSValueObject payload;
+  payload["socketId"] = socketId;
+  payload["error"] = message;
+  Emit(L"tcpError", std::move(payload));
 }
 
 void TcpSocketModule::createServer(int port, winrt::Microsoft::ReactNative::ReactPromise<int> promise) noexcept {
@@ -54,14 +78,14 @@ void TcpSocketModule::createServer(int port, winrt::Microsoft::ReactNative::Reac
   }
 
   int opt = 1;
-  setsockopt(listenSocket, SOL_SOCKET, SO_REUSEADDR, (char*)&opt, sizeof(opt));
+  setsockopt(listenSocket, SOL_SOCKET, SO_REUSEADDR, (char *)&opt, sizeof(opt));
 
   sockaddr_in serverAddr = {};
   serverAddr.sin_family = AF_INET;
   serverAddr.sin_addr.s_addr = INADDR_ANY;
   serverAddr.sin_port = htons(port);
 
-  if (bind(listenSocket, (sockaddr*)&serverAddr, sizeof(serverAddr)) == SOCKET_ERROR) {
+  if (bind(listenSocket, (sockaddr *)&serverAddr, sizeof(serverAddr)) == SOCKET_ERROR) {
     closesocket(listenSocket);
     promise.Reject(("Failed to bind to port " + std::to_string(port)).c_str());
     return;
@@ -123,7 +147,7 @@ void TcpSocketModule::connect(std::string host, int port, winrt::Microsoft::Reac
   hints.ai_socktype = SOCK_STREAM;
   hints.ai_protocol = IPPROTO_TCP;
 
-  addrinfo* result = nullptr;
+  addrinfo *result = nullptr;
   std::string portStr = std::to_string(port);
   int addrResult = getaddrinfo(host.c_str(), portStr.c_str(), &hints, &result);
   if (addrResult != 0) {
@@ -143,7 +167,7 @@ void TcpSocketModule::connect(std::string host, int port, winrt::Microsoft::Reac
 
   sockaddr_in remoteAddr = {};
   int addrLen = sizeof(remoteAddr);
-  getpeername(sock, (sockaddr*)&remoteAddr, &addrLen);
+  getpeername(sock, (sockaddr *)&remoteAddr, &addrLen);
 
   char ipStr[INET_ADDRSTRLEN];
   inet_ntop(AF_INET, &remoteAddr.sin_addr, ipStr, INET_ADDRSTRLEN);
@@ -152,12 +176,13 @@ void TcpSocketModule::connect(std::string host, int port, winrt::Microsoft::Reac
   {
     std::lock_guard<std::mutex> lock(m_mutex);
     socketId = m_nextSocketId++;
-    SocketInfo info;
-    info.socket = sock;
-    info.socketId = socketId;
-    info.remoteAddress = ipStr;
-    info.remotePort = ntohs(remoteAddr.sin_port);
-    m_sockets[socketId] = info;
+    auto state = std::make_shared<SocketState>();
+    state->socket = sock;
+    state->socketId = socketId;
+    state->serverId = 0;
+    state->remoteAddress = ipStr;
+    state->remotePort = ntohs(remoteAddr.sin_port);
+    m_sockets[socketId] = state;
   }
 
   u_long mode = 1;
@@ -170,18 +195,25 @@ void TcpSocketModule::connect(std::string host, int port, winrt::Microsoft::Reac
   promise.Resolve(socketId);
 }
 
-void TcpSocketModule::send(int socketId, std::string data, winrt::Microsoft::ReactNative::ReactPromise<void> promise) noexcept {
-  std::lock_guard<std::mutex> lock(m_mutex);
+void TcpSocketModule::send(int socketId, std::string base64, winrt::Microsoft::ReactNative::ReactPromise<void> promise) noexcept {
+  std::shared_ptr<SocketState> state;
+  {
+    std::lock_guard<std::mutex> lock(m_mutex);
+    auto it = m_sockets.find(socketId);
+    if (it == m_sockets.end()) {
+      promise.Reject(("Socket not found: " + std::to_string(socketId)).c_str());
+      return;
+    }
+    state = it->second;
+  }
 
-  auto it = m_sockets.find(socketId);
-  if (it == m_sockets.end()) {
-    promise.Reject(("Socket not found: " + std::to_string(socketId)).c_str());
+  std::vector<uint8_t> bytes;
+  if (!::FreeKiosk::Base64::Decode(base64, bytes)) {
+    promise.Reject("Invalid base64 payload");
     return;
   }
 
-  SOCKET sock = it->second.socket;
-  int sent = ::send(sock, data.c_str(), (int)data.length(), 0);
-  if (sent == SOCKET_ERROR) {
+  if (!bytes.empty() && !SendAll(*state, bytes.data(), bytes.size())) {
     promise.Reject("Failed to send data");
     return;
   }
@@ -190,18 +222,73 @@ void TcpSocketModule::send(int socketId, std::string data, winrt::Microsoft::Rea
 }
 
 void TcpSocketModule::close(int socketId, winrt::Microsoft::ReactNative::ReactPromise<void> promise) noexcept {
-  std::lock_guard<std::mutex> lock(m_mutex);
+  CloseSocketInternal(socketId, false);
+  promise.Resolve();
+}
 
-  auto it = m_sockets.find(socketId);
-  if (it == m_sockets.end()) {
-    promise.Resolve();
-    return;
+void TcpSocketModule::startMjpegStream(int socketId, int intervalMs, int quality, int maxDimension,
+                                       winrt::Microsoft::ReactNative::ReactPromise<void> promise) noexcept {
+  std::shared_ptr<SocketState> state;
+  {
+    std::lock_guard<std::mutex> lock(m_mutex);
+    auto it = m_sockets.find(socketId);
+    if (it == m_sockets.end()) {
+      promise.Reject(("Socket not found: " + std::to_string(socketId)).c_str());
+      return;
+    }
+    state = it->second;
   }
 
-  if (it->second.socket != INVALID_SOCKET) {
-    closesocket(it->second.socket);
+  int previous = m_mjpegSocketId.exchange(socketId);
+  if (previous != -1 && previous != socketId) {
+    // A new client steals the stream (Android behaviour).
+    CloseSocketInternal(previous, true);
   }
-  m_sockets.erase(it);
+
+  promise.Resolve();
+
+  std::thread([this, socketId, intervalMs, quality, maxDimension, state]() {
+    winrt::init_apartment(winrt::apartment_type::multi_threaded);
+
+    if (intervalMs <= 0) {
+      intervalMs = 250;
+    }
+
+    while (m_mjpegSocketId.load() == socketId && !state->closed.load()) {
+      auto tickStart = std::chrono::steady_clock::now();
+
+      ::FreeKiosk::Capture::Frame frame;
+      std::string error;
+      if (::FreeKiosk::Capture::CapturePrimary(::FreeKiosk::Capture::ImageFormat::Jpeg, quality, maxDimension, frame,
+                                             error)) {
+        std::string header = "--freekiosk-frame\r\nContent-Type: image/jpeg\r\nContent-Length: " +
+            std::to_string(frame.bytes.size()) + "\r\n\r\n";
+        if (!SendAll(*state, reinterpret_cast<uint8_t const *>(header.data()), header.size()) ||
+            !SendAll(*state, frame.bytes.data(), frame.bytes.size())) {
+          break;
+        }
+      }
+      // A capture failure skips that frame and continues.
+
+      auto elapsed = std::chrono::steady_clock::now() - tickStart;
+      auto remaining = std::chrono::milliseconds(intervalMs) - elapsed;
+      if (remaining > std::chrono::milliseconds(0)) {
+        std::this_thread::sleep_for(remaining);
+      }
+    }
+
+    if (m_mjpegSocketId.load() == socketId) {
+      m_mjpegSocketId = -1;
+    }
+    CloseSocketInternal(socketId, true);
+  }).detach();
+}
+
+void TcpSocketModule::stopMjpegStream(winrt::Microsoft::ReactNative::ReactPromise<void> promise) noexcept {
+  int active = m_mjpegSocketId.exchange(-1);
+  if (active != -1) {
+    CloseSocketInternal(active, true);
+  }
   promise.Resolve();
 }
 
@@ -209,7 +296,7 @@ void TcpSocketModule::HandleServerAccept(SOCKET listenSocket, int serverId) noex
   while (true) {
     sockaddr_in clientAddr = {};
     int clientAddrLen = sizeof(clientAddr);
-    SOCKET clientSocket = accept(listenSocket, (sockaddr*)&clientAddr, &clientAddrLen);
+    SOCKET clientSocket = accept(listenSocket, (sockaddr *)&clientAddr, &clientAddrLen);
 
     if (clientSocket == INVALID_SOCKET) {
       {
@@ -222,11 +309,11 @@ void TcpSocketModule::HandleServerAccept(SOCKET listenSocket, int serverId) noex
       continue;
     }
 
-    HandleClientConnection(clientSocket, clientAddr);
+    HandleClientConnection(clientSocket, clientAddr, serverId);
   }
 }
 
-void TcpSocketModule::HandleClientConnection(SOCKET clientSocket, sockaddr_in clientAddr) noexcept {
+void TcpSocketModule::HandleClientConnection(SOCKET clientSocket, sockaddr_in clientAddr, int serverId) noexcept {
   char ipStr[INET_ADDRSTRLEN];
   inet_ntop(AF_INET, &clientAddr.sin_addr, ipStr, INET_ADDRSTRLEN);
   int remotePort = ntohs(clientAddr.sin_port);
@@ -235,24 +322,24 @@ void TcpSocketModule::HandleClientConnection(SOCKET clientSocket, sockaddr_in cl
   {
     std::lock_guard<std::mutex> lock(m_mutex);
     socketId = m_nextSocketId++;
-    SocketInfo info;
-    info.socket = clientSocket;
-    info.socketId = socketId;
-    info.remoteAddress = ipStr;
-    info.remotePort = remotePort;
-    m_sockets[socketId] = info;
+    auto state = std::make_shared<SocketState>();
+    state->socket = clientSocket;
+    state->socketId = socketId;
+    state->serverId = serverId;
+    state->remoteAddress = ipStr;
+    state->remotePort = remotePort;
+    m_sockets[socketId] = state;
   }
 
   u_long mode = 1;
   ioctlsocket(clientSocket, FIONBIO, &mode);
 
-  if (onTcpConnection) {
-    m_reactContext.UIDispatcher().Post([this, socketId, ipStr = std::string(ipStr), remotePort]() {
-      if (onTcpConnection) {
-        onTcpConnection(socketId, ipStr, remotePort);
-      }
-    });
-  }
+  JSValueObject payload;
+  payload["serverId"] = serverId;
+  payload["socketId"] = socketId;
+  payload["remoteAddress"] = std::string(ipStr);
+  payload["remotePort"] = remotePort;
+  Emit(L"tcpConnection", std::move(payload));
 
   std::thread([this, socketId]() {
     this->ReadSocketData(socketId);
@@ -260,47 +347,28 @@ void TcpSocketModule::HandleClientConnection(SOCKET clientSocket, sockaddr_in cl
 }
 
 void TcpSocketModule::ReadSocketData(int socketId) noexcept {
-  SOCKET sock;
+  std::shared_ptr<SocketState> state;
   {
     std::lock_guard<std::mutex> lock(m_mutex);
     auto it = m_sockets.find(socketId);
     if (it == m_sockets.end()) {
       return;
     }
-    sock = it->second.socket;
+    state = it->second;
   }
 
-  char buffer[4096];
+  char buffer[8192];
   while (true) {
-    int bytesRead = recv(sock, buffer, sizeof(buffer) - 1, 0);
+    int bytesRead = recv(state->socket, buffer, sizeof(buffer), 0);
 
     if (bytesRead > 0) {
-      buffer[bytesRead] = '\0';
-      std::string data(buffer, bytesRead);
-
-      if (onTcpData) {
-        m_reactContext.UIDispatcher().Post([this, socketId, data]() {
-          if (onTcpData) {
-            onTcpData(socketId, data);
-          }
-        });
-      }
+      std::string data = ::FreeKiosk::Base64::Encode(reinterpret_cast<uint8_t const *>(buffer), bytesRead);
+      JSValueObject payload;
+      payload["socketId"] = socketId;
+      payload["data"] = data;
+      Emit(L"tcpData", std::move(payload));
     } else if (bytesRead == 0) {
-      if (onTcpClose) {
-        m_reactContext.UIDispatcher().Post([this, socketId]() {
-          if (onTcpClose) {
-            onTcpClose(socketId);
-          }
-        });
-      }
-      {
-        std::lock_guard<std::mutex> lock(m_mutex);
-        auto it = m_sockets.find(socketId);
-        if (it != m_sockets.end()) {
-          closesocket(it->second.socket);
-          m_sockets.erase(it);
-        }
-      }
+      CloseSocketInternal(socketId, true);
       break;
     } else {
       int error = WSAGetLastError();
@@ -308,35 +376,74 @@ void TcpSocketModule::ReadSocketData(int socketId) noexcept {
         std::this_thread::sleep_for(std::chrono::milliseconds(10));
         continue;
       } else if (error == WSAECONNRESET || error == WSAECONNABORTED) {
-        if (onTcpClose) {
-          m_reactContext.UIDispatcher().Post([this, socketId]() {
-            if (onTcpClose) {
-              onTcpClose(socketId);
-            }
-          });
-        }
-        {
-          std::lock_guard<std::mutex> lock(m_mutex);
-          auto it = m_sockets.find(socketId);
-          if (it != m_sockets.end()) {
-            closesocket(it->second.socket);
-            m_sockets.erase(it);
-          }
-        }
+        CloseSocketInternal(socketId, true);
         break;
       } else {
-        std::string errorMsg = "Socket error: " + std::to_string(error);
-        if (onTcpError) {
-          m_reactContext.UIDispatcher().Post([this, socketId, errorMsg]() {
-            if (onTcpError) {
-              onTcpError(socketId, errorMsg);
-            }
-          });
-        }
+        EmitSocketError(socketId, "Socket error: " + std::to_string(error));
+        CloseSocketInternal(socketId, true);
         break;
       }
     }
   }
+}
+
+void TcpSocketModule::CloseSocketInternal(int socketId, bool emitClose) noexcept {
+  std::shared_ptr<SocketState> state;
+  {
+    std::lock_guard<std::mutex> lock(m_mutex);
+    auto it = m_sockets.find(socketId);
+    if (it == m_sockets.end()) {
+      return;
+    }
+    state = it->second;
+    m_sockets.erase(it);
+  }
+
+  {
+    std::lock_guard<std::mutex> writeLock(state->writeMutex);
+    state->closed = true;
+    if (state->socket != INVALID_SOCKET) {
+      closesocket(state->socket);
+      state->socket = INVALID_SOCKET;
+    }
+  }
+
+  if (emitClose) {
+    JSValueObject payload;
+    payload["socketId"] = socketId;
+    Emit(L"tcpClose", std::move(payload));
+  }
+}
+
+bool TcpSocketModule::SendAll(SocketState &s, uint8_t const *data, size_t len) noexcept {
+  std::lock_guard<std::mutex> writeLock(s.writeMutex);
+  if (s.closed.load()) {
+    return false;
+  }
+
+  size_t sent = 0;
+  while (sent < len) {
+    int result = ::send(s.socket, reinterpret_cast<const char *>(data + sent), static_cast<int>(len - sent), 0);
+    if (result == SOCKET_ERROR) {
+      int error = WSAGetLastError();
+      if (error == WSAEWOULDBLOCK) {
+        fd_set writeSet;
+        FD_ZERO(&writeSet);
+        FD_SET(s.socket, &writeSet);
+        timeval timeout;
+        timeout.tv_sec = 5;
+        timeout.tv_usec = 0;
+        int sel = select(0, nullptr, &writeSet, nullptr, &timeout);
+        if (sel <= 0) {
+          return false;
+        }
+        continue;
+      }
+      return false;
+    }
+    sent += result;
+  }
+  return true;
 }
 
 } // namespace winrt::FreeKiosk::implementation

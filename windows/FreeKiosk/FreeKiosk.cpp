@@ -19,6 +19,9 @@
 #include "modules/OverlayServiceModule.h"
 #include "modules/HttpServerModule.h"
 #include "modules/Win32Util.h"
+#include "modules/Base64.h"
+#include "modules/ScreenCapture.h"
+#include "modules/PackageInstallModule.h"
 
 // A PackageProvider containing any turbo modules you define within this app project
 struct CompReactPackageProvider

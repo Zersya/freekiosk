@@ -1,7 +1,15 @@
 /**
  * HTTP/1.1 request parser for the Windows REST server.
- * Pure TypeScript — parses raw HTTP request bytes into a structured object.
+ * Pure TypeScript — parses raw HTTP request bytes (a binary string) into a
+ * structured object. Response bodies are serialized by httpServer.
  */
+
+import {
+  base64ByteLength,
+  binaryStringToBytes,
+  utf8Decode,
+  utf8Encode,
+} from '../net/bytes';
 
 export interface HttpRequest {
   method: string;
@@ -14,10 +22,10 @@ export interface HttpRequest {
 
 export interface HttpResponse {
   status: number;
-  statusText: string;
   headers: Record<string, string>;
-  body: string;
-  contentType?: string;
+  body?: string;
+  bodyBase64?: string;
+  stream?: 'mjpeg';
 }
 
 const STATUS_TEXTS: Record<number, string> = {
@@ -29,12 +37,23 @@ const STATUS_TEXTS: Record<number, string> = {
   403: 'Forbidden',
   404: 'Not Found',
   405: 'Method Not Allowed',
+  409: 'Conflict',
+  413: 'Payload Too Large',
   500: 'Internal Server Error',
+  501: 'Not Implemented',
+  503: 'Service Unavailable',
+};
+
+export const CORS_HEADERS: Record<string, string> = {
+  'access-control-allow-origin': '*',
+  'access-control-allow-methods': 'GET, POST, OPTIONS',
+  'access-control-allow-headers': 'Content-Type, X-Api-Key',
 };
 
 export function parseHttpRequest(raw: string): HttpRequest {
-  const [headPart, ...bodyParts] = raw.split('\r\n\r\n');
-  const body = bodyParts.join('\r\n\r\n');
+  const headEnd = raw.indexOf('\r\n\r\n');
+  const headPart = headEnd === -1 ? raw : raw.slice(0, headEnd);
+  const bodyPart = headEnd === -1 ? '' : raw.slice(headEnd + 4);
 
   const lines = headPart.split('\r\n');
   const [method, fullPath] = lines[0].split(' ');
@@ -58,7 +77,8 @@ export function parseHttpRequest(raw: string): HttpRequest {
     for (const pair of queryString.split('&')) {
       const [key, value] = pair.split('=');
       if (key) {
-        query[decodeURIComponent(key)] = decodeURIComponent(value || '');
+        const decode = (s: string) => decodeURIComponent(s.replace(/\+/g, ' '));
+        query[decode(key)] = decode(value || '');
       }
     }
   }
@@ -68,71 +88,79 @@ export function parseHttpRequest(raw: string): HttpRequest {
     path,
     query,
     headers,
-    body,
+    body: utf8Decode(binaryStringToBytes(bodyPart)),
     raw,
   };
 }
 
-export function buildHttpResponse(response: HttpResponse): string {
-  const statusText = response.statusText || STATUS_TEXTS[response.status] || 'Unknown';
-  const headers: string[] = [`HTTP/1.1 ${response.status} ${statusText}`];
+function unixSeconds(): number {
+  return Math.floor(Date.now() / 1000);
+}
 
-  const allHeaders: Record<string, string> = { ...response.headers };
-  if (response.contentType && !allHeaders['content-type']) {
-    allHeaders['content-type'] = response.contentType;
-  }
-  if (!allHeaders['content-length']) {
-    allHeaders['content-length'] = String(new TextEncoder().encode(response.body).length);
-  }
-  if (!allHeaders['connection']) {
-    allHeaders['connection'] = 'close';
+export function jsonSuccess(data: unknown): HttpResponse {
+  return {
+    status: 200,
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ success: true, data, timestamp: unixSeconds() }),
+  };
+}
+
+export function jsonError(status: number, message: string): HttpResponse {
+  return {
+    status,
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ success: false, error: message, timestamp: unixSeconds() }),
+  };
+}
+
+export function imageResponse(base64: string, contentType: string): HttpResponse {
+  return {
+    status: 200,
+    headers: { 'content-type': contentType },
+    bodyBase64: base64,
+  };
+}
+
+export function mjpegResponse(): HttpResponse {
+  return {
+    status: 200,
+    headers: {
+      'content-type': 'multipart/x-mixed-replace; boundary=freekiosk-frame',
+      'cache-control': 'no-cache, no-store, must-revalidate',
+      pragma: 'no-cache',
+    },
+    stream: 'mjpeg',
+  };
+}
+
+/**
+ * Serialize the status line + headers (plus CORS). Content-Length is omitted
+ * for streaming responses (contentLength === null).
+ */
+export function serializeHead(response: HttpResponse, contentLength: number | null): string {
+  const statusText = STATUS_TEXTS[response.status] || 'Unknown';
+  const lines: string[] = [`HTTP/1.1 ${response.status} ${statusText}`];
+
+  const allHeaders: Record<string, string> = {
+    ...CORS_HEADERS,
+    ...response.headers,
+    connection: 'close',
+  };
+  if (contentLength !== null && !allHeaders['content-length']) {
+    allHeaders['content-length'] = String(contentLength);
   }
 
   for (const [key, value] of Object.entries(allHeaders)) {
-    headers.push(`${key}: ${value}`);
+    lines.push(`${key}: ${value}`);
   }
 
-  headers.push('', '');
-  return headers.join('\r\n') + response.body;
+  return lines.join('\r\n') + '\r\n\r\n';
 }
 
-export function jsonResponse(data: unknown, status = 200): HttpResponse {
-  return {
-    status,
-    statusText: STATUS_TEXTS[status] || 'Unknown',
-    headers: { 'content-type': 'application/json' },
-    body: JSON.stringify(data),
-  };
-}
-
-export function errorResponse(status: number, message: string): HttpResponse {
-  return {
-    status,
-    statusText: STATUS_TEXTS[status] || 'Unknown',
-    headers: { 'content-type': 'application/json' },
-    body: JSON.stringify({ error: message }),
-  };
-}
-
-export function textResponse(text: string, status = 200): HttpResponse {
-  return {
-    status,
-    statusText: STATUS_TEXTS[status] || 'Unknown',
-    headers: { 'content-type': 'text/plain' },
-    body: text,
-  };
-}
-
-export function bufferResponse(data: Uint8Array, contentType = 'application/octet-stream'): HttpResponse {
-  // Convert Uint8Array to binary string for transport
-  let binary = '';
-  for (let i = 0; i < data.length; i++) {
-    binary += String.fromCharCode(data[i]);
+/** Byte length of a response body (UTF-8 for text, decoded for base64). */
+export function bodyByteLength(response: HttpResponse): number {
+  if (response.bodyBase64 !== undefined) {
+    return base64ByteLength(response.bodyBase64);
   }
-  return {
-    status: 200,
-    statusText: 'OK',
-    headers: { 'content-type': contentType },
-    body: binary,
-  };
+  return response.body === undefined ? 0 : utf8Encode(response.body).length;
 }

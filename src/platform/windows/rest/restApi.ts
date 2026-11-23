@@ -1,11 +1,29 @@
 /**
  * REST API handlers for Windows.
- * Routes API endpoints to command handlers.
+ * Mirrors Android's KioskHttpServer routing: same envelope, same auth
+ * (X-Api-Key header), same control gating, same error strings.
  */
 
-import { HttpRequest, HttpResponse, jsonResponse, errorResponse } from './httpParser';
+import { NativeModules } from 'react-native';
+import {
+  HttpRequest,
+  HttpResponse,
+  jsonSuccess,
+  jsonError,
+  imageResponse,
+  mjpegResponse,
+} from './httpParser';
 import { executeCommand, getAllCommands } from '../commands/executeCommand';
-import { getDeviceStatusProvider } from '../status/deviceStatus';
+import { dispatchDeviceCommand } from '../commands/deviceCommands';
+import { collectStatusTree, StatusTree } from '../status/deviceStatus';
+import { installMsix, uninstallMsix } from '../apps/msixInstaller';
+
+const { ScreenshotModule } = NativeModules;
+
+export interface RestApiConfig {
+  apiKey: string | null;
+  allowControl: boolean;
+}
 
 // Parse request body as JSON
 function parseBody(body: string): Record<string, unknown> {
@@ -17,278 +35,330 @@ function parseBody(body: string): Record<string, unknown> {
   }
 }
 
-// GET /api/status - Full device status
+interface Route {
+  methods: Array<'GET' | 'POST'>;
+  control: boolean;
+  handler(request: HttpRequest): Promise<HttpResponse>;
+}
+
+// GET /api/status - full device status tree
 async function handleStatus(_request: HttpRequest): Promise<HttpResponse> {
-  const provider = getDeviceStatusProvider();
-  const status = await provider.getStatus();
-  return jsonResponse(status);
+  return jsonSuccess(await collectStatusTree());
 }
 
-// GET /api/battery - Battery info
-async function handleBattery(_request: HttpRequest): Promise<HttpResponse> {
-  const provider = getDeviceStatusProvider();
-  const battery = await provider.getBattery();
-  return jsonResponse(battery);
-}
-
-// GET /api/brightness - Current brightness
-async function handleGetBrightness(_request: HttpRequest): Promise<HttpResponse> {
-  const provider = getDeviceStatusProvider();
-  const screen = await provider.getScreen();
-  return jsonResponse({ brightness: screen.screenBrightness ?? 50 });
-}
-
-// POST /api/brightness - Set brightness
-async function handleSetBrightness(request: HttpRequest): Promise<HttpResponse> {
-  const params = parseBody(request.body);
-  const result = await executeCommand('/api/brightness', params);
-  if (!result.success) {
-    return errorResponse(400, result.error || 'Failed to set brightness');
-  }
-  return jsonResponse(result.data || result);
-}
-
-// GET /api/screen - Screen state
-async function handleGetScreen(_request: HttpRequest): Promise<HttpResponse> {
-  const provider = getDeviceStatusProvider();
-  const screen = await provider.getScreen();
-  return jsonResponse({ on: screen.screenOn ?? true });
-}
-
-// POST /api/screen - Screen on/off
-async function handleSetScreen(request: HttpRequest): Promise<HttpResponse> {
-  const params = parseBody(request.body);
-  const result = await executeCommand('/api/screen', params);
-  if (!result.success) {
-    return errorResponse(400, result.error || 'Failed to set screen');
-  }
-  return jsonResponse(result.data || result);
-}
-
-// GET /api/info - Device info
-async function handleInfo(_request: HttpRequest): Promise<HttpResponse> {
-  const provider = getDeviceStatusProvider();
-  const status = await provider.getStatus();
-  return jsonResponse({
-    deviceName: status.deviceName,
-    platform: status.platform,
-    version: status.version,
-    buildNumber: status.buildNumber,
-    serialNumber: status.serialNumber,
-    hostname: status.hostname,
-  });
-}
-
-// GET /api/health - Health check
+// GET /api/health - health check
 async function handleHealth(_request: HttpRequest): Promise<HttpResponse> {
-  return jsonResponse({ status: 'ok', timestamp: Date.now() });
-}
-
-// GET /api/storage - Storage info
-async function handleStorage(_request: HttpRequest): Promise<HttpResponse> {
-  const provider = getDeviceStatusProvider();
-  const storage = await provider.getStorage();
-  return jsonResponse(storage);
-}
-
-// GET /api/memory - RAM info
-async function handleMemory(_request: HttpRequest): Promise<HttpResponse> {
-  const provider = getDeviceStatusProvider();
-  const system = await provider.getSystem();
-  return jsonResponse({
-    free: system.freeMemory,
-    total: system.totalMemory,
+  return jsonSuccess({
+    status: 'ok',
+    timestamp: Math.floor(Date.now() / 1000),
+    platform: 'windows',
   });
 }
 
-// GET /api/wifi - WiFi status
-async function handleWifi(_request: HttpRequest): Promise<HttpResponse> {
-  const provider = getDeviceStatusProvider();
-  const network = await provider.getNetwork();
-  return jsonResponse({
-    connected: network.wifiConnected ?? false,
-    ssid: network.wifiSsid,
-    signal: network.wifiSignal,
-  });
+// Status subtree helpers
+async function subtree(pick: (tree: StatusTree) => unknown): Promise<HttpResponse> {
+  const tree = await collectStatusTree();
+  return jsonSuccess(pick(tree));
 }
 
-// POST /api/reload - Reload page
-async function handleReload(_request: HttpRequest): Promise<HttpResponse> {
-  const result = await executeCommand('/api/reload', {});
-  if (!result.success) {
-    return errorResponse(500, result.error || 'Failed to reload');
-  }
-  return jsonResponse(result.data || result);
+async function handleBattery(): Promise<HttpResponse> {
+  return subtree((t) => t.battery);
 }
 
-// POST /api/back - Go back
-async function handleBack(_request: HttpRequest): Promise<HttpResponse> {
-  const result = await executeCommand('/api/back', {});
-  if (!result.success) {
-    return errorResponse(500, result.error || 'Failed to go back');
-  }
-  return jsonResponse(result.data || result);
+async function handleGetScreen(): Promise<HttpResponse> {
+  return subtree((t) => t.screen);
 }
 
-// POST /api/home - Go home
-async function handleHome(_request: HttpRequest): Promise<HttpResponse> {
-  const result = await executeCommand('/api/home', {});
-  if (!result.success) {
-    return errorResponse(500, result.error || 'Failed to go home');
-  }
-  return jsonResponse(result.data || result);
+async function handleGetBrightness(): Promise<HttpResponse> {
+  return subtree((t) => ({ brightness: t.screen.brightness }));
 }
 
-// POST /api/url - Navigate to URL
-async function handleUrl(request: HttpRequest): Promise<HttpResponse> {
+async function handleInfo(): Promise<HttpResponse> {
+  return subtree((t) => t.device);
+}
+
+async function handleWifi(): Promise<HttpResponse> {
+  return subtree((t) => t.wifi);
+}
+
+async function handleStorage(): Promise<HttpResponse> {
+  return subtree((t) => t.storage);
+}
+
+async function handleMemory(): Promise<HttpResponse> {
+  return subtree((t) => t.memory);
+}
+
+async function handleGetVolume(): Promise<HttpResponse> {
+  return subtree((t) => ({
+    level: t.audio.volume,
+    maxLevel: 100,
+  }));
+}
+
+// Legacy mutating routes route through executeCommand.
+async function legacy(request: HttpRequest, failMessage: string): Promise<HttpResponse> {
   const params = parseBody(request.body);
-  const result = await executeCommand('/api/url', params);
+  const result = await executeCommand(request.path, params);
   if (!result.success) {
-    return errorResponse(400, result.error || 'Failed to navigate');
+    return jsonError(400, result.error || failMessage);
   }
-  return jsonResponse(result.data || result);
+  return jsonSuccess(result.data || result);
 }
 
-// POST /api/kiosk - Enable/disable kiosk mode
-async function handleKiosk(request: HttpRequest): Promise<HttpResponse> {
-  const params = parseBody(request.body);
-  const result = await executeCommand('/api/kiosk', params);
-  if (!result.success) {
-    return errorResponse(400, result.error || 'Failed to set kiosk mode');
-  }
-  return jsonResponse(result.data || result);
-}
-
-// POST /api/volume - Set volume
-async function handleVolume(request: HttpRequest): Promise<HttpResponse> {
-  const params = parseBody(request.body);
-  const result = await executeCommand('/api/volume', params);
-  if (!result.success) {
-    return errorResponse(400, result.error || 'Failed to set volume');
-  }
-  return jsonResponse(result.data || result);
-}
-
-// GET /api/volume - Current volume
-async function handleGetVolume(_request: HttpRequest): Promise<HttpResponse> {
-  const provider = getDeviceStatusProvider();
-  const status = await provider.getStatus();
-  return jsonResponse({ volume: status.volume });
-}
-
-// POST /api/restart - Restart app
-async function handleRestart(request: HttpRequest): Promise<HttpResponse> {
-  const params = parseBody(request.body);
-  const result = await executeCommand('/api/restart', params);
-  if (!result.success) {
-    return errorResponse(500, result.error || 'Failed to restart');
-  }
-  return jsonResponse(result.data || result);
-}
-
-// POST /api/screenshot - Take screenshot
+// GET|POST /api/screenshot - JPEG screenshot
 async function handleScreenshot(_request: HttpRequest): Promise<HttpResponse> {
-  const result = await executeCommand('/api/screenshot', {});
-  if (!result.success) {
-    return errorResponse(500, result.error || 'Failed to capture screenshot');
+  try {
+    const base64 = await ScreenshotModule.capture('jpeg', 80, 1080);
+    return imageResponse(base64, 'image/jpeg');
+  } catch {
+    return jsonError(503, 'Screenshot not available');
   }
-  return jsonResponse(result.data || result);
 }
 
-// POST /api/lock - Lock screen
-async function handleLock(_request: HttpRequest): Promise<HttpResponse> {
-  const result = await executeCommand('/api/lock', {});
-  if (!result.success) {
-    return errorResponse(500, result.error || 'Failed to lock screen');
-  }
-  return jsonResponse(result.data || result);
+// GET|POST /api/screenshot/stream - MJPEG live stream
+async function handleScreenshotStream(_request: HttpRequest): Promise<HttpResponse> {
+  return mjpegResponse();
 }
 
-// POST /api/unlock - Unlock screen
-async function handleUnlock(_request: HttpRequest): Promise<HttpResponse> {
-  const result = await executeCommand('/api/unlock', {});
-  if (!result.success) {
-    return errorResponse(500, result.error || 'Failed to unlock screen');
+// POST /api/remote/tap
+async function handleRemoteTap(request: HttpRequest): Promise<HttpResponse> {
+  const body = parseBody(request.body);
+  const hasPx = body.x !== undefined && body.y !== undefined;
+  const hasPct = body.xPct !== undefined && body.yPct !== undefined;
+  if (!hasPx && !hasPct) {
+    return jsonError(400, 'JSON body with x and y is required, e.g. {"x": 540, "y": 960}');
   }
-  return jsonResponse(result.data || result);
+  const result = await dispatchDeviceCommand('remoteTap', body);
+  if (result.executed !== true) {
+    return jsonError(400, (result.error as string) ?? 'Tap failed');
+  }
+  return jsonSuccess(result);
 }
 
-// POST /api/key - Inject key
-async function handleKey(request: HttpRequest): Promise<HttpResponse> {
-  const params = parseBody(request.body);
-  const key = params.key ?? params.value;
+// POST /api/remote/swipe
+async function handleRemoteSwipe(request: HttpRequest): Promise<HttpResponse> {
+  const body = parseBody(request.body);
+  const hasPx =
+    body.x1 !== undefined && body.y1 !== undefined && body.x2 !== undefined && body.y2 !== undefined;
+  const hasPct =
+    body.x1Pct !== undefined &&
+    body.y1Pct !== undefined &&
+    body.x2Pct !== undefined &&
+    body.y2Pct !== undefined;
+  if (!hasPx && !hasPct) {
+    return jsonError(
+      400,
+      'JSON body with x1, y1, x2, y2 is required, e.g. {"x1": 540, "y1": 960, "x2": 540, "y2": 400}'
+    );
+  }
+  const result = await dispatchDeviceCommand('remoteSwipe', body);
+  if (result.executed !== true) {
+    return jsonError(400, (result.error as string) ?? 'Swipe failed');
+  }
+  return jsonSuccess(result);
+}
+
+// POST /api/remote/text
+async function handleRemoteText(request: HttpRequest): Promise<HttpResponse> {
+  const body = parseBody(request.body);
+  if (body.text === undefined || body.text === '') {
+    return jsonError(400, `JSON body with 'text' field is required, e.g. {"text": "hello world"}`);
+  }
+  return jsonSuccess(await dispatchDeviceCommand('keyboardText', body));
+}
+
+// GET|POST /api/remote/keyboard?map=ctrl+c
+async function handleKeyboardComboRoute(request: HttpRequest): Promise<HttpResponse> {
+  const map = request.query['map'];
+  if (!map) {
+    return jsonError(400, `Query parameter 'map' is required, e.g. /api/remote/keyboard?map=ctrl+c`);
+  }
+  const result = await dispatchDeviceCommand('keyboardCombo', { map });
+  if (result.executed !== true) {
+    return jsonError(400, (result.error as string) ?? 'Key combination failed');
+  }
+  return jsonSuccess(result);
+}
+
+// GET|POST /api/remote/keyboard/{key}
+async function handleKeyboardKeyRoute(request: HttpRequest, key: string): Promise<HttpResponse> {
   if (!key) {
-    return errorResponse(400, 'Key is required');
+    return jsonError(400, 'Key name is required in URL path, e.g. /api/remote/keyboard/a');
   }
-  const result = await executeCommand('/api/key', params);
-  if (!result.success) {
-    return errorResponse(400, result.error || 'Failed to inject key');
+  const result = await dispatchDeviceCommand('keyboardKey', { key });
+  if (result.executed !== true) {
+    return jsonError(400, (result.error as string) ?? 'Key injection failed');
   }
-  return jsonResponse(result.data || result);
+  return jsonSuccess(result);
 }
 
-// POST /api/text - Inject text
-async function handleText(request: HttpRequest): Promise<HttpResponse> {
-  const params = parseBody(request.body);
-  const text = params.text ?? params.value;
-  if (!text) {
-    return errorResponse(400, 'Text is required');
-  }
-  const result = await executeCommand('/api/text', params);
-  if (!result.success) {
-    return errorResponse(400, result.error || 'Failed to inject text');
-  }
-  return jsonResponse(result.data || result);
+// GET|POST /api/remote/{key} - D-pad / remote keys
+async function handleRemoteKeyRoute(_request: HttpRequest, key: string): Promise<HttpResponse> {
+  return jsonSuccess(await dispatchDeviceCommand('remoteKey', { key }));
 }
 
-// GET /api/commands - List available commands
+// POST /api/app/install
+async function handleAppInstall(request: HttpRequest): Promise<HttpResponse> {
+  const body = parseBody(request.body);
+  if (!String(body.downloadUrl ?? '').trim()) {
+    return jsonError(400, 'downloadUrl is required');
+  }
+  return jsonSuccess(
+    await installMsix({ fileName: 'app.msix', packageName: '', sha256: '', ...body })
+  );
+}
+
+// POST /api/app/uninstall
+async function handleAppUninstall(request: HttpRequest): Promise<HttpResponse> {
+  const body = parseBody(request.body);
+  if (!String(body.packageName ?? '').trim()) {
+    return jsonError(400, 'packageName is required');
+  }
+  return jsonSuccess(await uninstallMsix(body));
+}
+
+// GET /api/commands - list available commands
 async function handleCommands(_request: HttpRequest): Promise<HttpResponse> {
-  return jsonResponse({ commands: getAllCommands() });
+  return jsonSuccess({ commands: getAllCommands() });
 }
 
-// Route table
-const ROUTES: Record<string, { GET?: (req: HttpRequest) => Promise<HttpResponse>; POST?: (req: HttpRequest) => Promise<HttpResponse> }> = {
-  '/api/status': { GET: handleStatus },
-  '/api/battery': { GET: handleBattery },
-  '/api/brightness': { GET: handleGetBrightness, POST: handleSetBrightness },
-  '/api/screen': { GET: handleGetScreen, POST: handleSetScreen },
-  '/api/info': { GET: handleInfo },
-  '/api/health': { GET: handleHealth },
-  '/api/storage': { GET: handleStorage },
-  '/api/memory': { GET: handleMemory },
-  '/api/wifi': { GET: handleWifi },
-  '/api/reload': { POST: handleReload },
-  '/api/back': { POST: handleBack },
-  '/api/home': { POST: handleHome },
-  '/api/url': { POST: handleUrl },
-  '/api/kiosk': { POST: handleKiosk },
-  '/api/volume': { GET: handleGetVolume, POST: handleVolume },
-  '/api/restart': { POST: handleRestart },
-  '/api/screenshot': { POST: handleScreenshot },
-  '/api/lock': { POST: handleLock },
-  '/api/unlock': { POST: handleUnlock },
-  '/api/key': { POST: handleKey },
-  '/api/text': { POST: handleText },
-  '/api/commands': { GET: handleCommands },
+// GET / - endpoint listing
+async function handleRoot(_request: HttpRequest): Promise<HttpResponse> {
+  return jsonSuccess({ endpoints: Object.keys(ROUTES).sort() });
+}
+
+const REMOTE_KEYS = ['up', 'down', 'left', 'right', 'select', 'back', 'home', 'menu', 'playpause'];
+
+const ROUTES: Record<string, Route> = {
+  '/': { methods: ['GET'], control: false, handler: handleRoot },
+  '/api/commands': { methods: ['GET'], control: false, handler: handleCommands },
+  '/api/status': { methods: ['GET', 'POST'], control: false, handler: handleStatus },
+  '/api/health': { methods: ['GET', 'POST'], control: false, handler: handleHealth },
+  '/api/battery': { methods: ['GET'], control: false, handler: handleBattery },
+  '/api/screen': {
+    methods: ['GET', 'POST'],
+    control: false,
+    handler: (r) => (r.method === 'GET' ? handleGetScreen() : legacy(r, 'Failed to set screen')),
+  },
+  '/api/brightness': {
+    methods: ['GET', 'POST'],
+    control: false,
+    handler: (r) =>
+      r.method === 'GET' ? handleGetBrightness() : legacy(r, 'Failed to set brightness'),
+  },
+  '/api/info': { methods: ['GET'], control: false, handler: handleInfo },
+  '/api/wifi': { methods: ['GET'], control: false, handler: handleWifi },
+  '/api/storage': { methods: ['GET'], control: false, handler: handleStorage },
+  '/api/memory': { methods: ['GET'], control: false, handler: handleMemory },
+  '/api/volume': {
+    methods: ['GET', 'POST'],
+    control: false,
+    handler: (r) => (r.method === 'GET' ? handleGetVolume() : legacy(r, 'Failed to set volume')),
+  },
+  '/api/screenshot': {
+    methods: ['GET', 'POST'],
+    control: false,
+    handler: handleScreenshot,
+  },
+  '/api/screenshot/stream': {
+    methods: ['GET', 'POST'],
+    control: false,
+    handler: handleScreenshotStream,
+  },
+  '/api/reload': { methods: ['POST'], control: true, handler: (r) => legacy(r, 'Failed to reload') },
+  '/api/back': { methods: ['POST'], control: true, handler: (r) => legacy(r, 'Failed to go back') },
+  '/api/home': { methods: ['POST'], control: true, handler: (r) => legacy(r, 'Failed to go home') },
+  '/api/url': { methods: ['POST'], control: true, handler: (r) => legacy(r, 'Failed to navigate') },
+  '/api/kiosk': {
+    methods: ['POST'],
+    control: true,
+    handler: (r) => legacy(r, 'Failed to set kiosk mode'),
+  },
+  '/api/restart': { methods: ['POST'], control: true, handler: (r) => legacy(r, 'Failed to restart') },
+  '/api/lock': { methods: ['POST'], control: true, handler: (r) => legacy(r, 'Failed to lock screen') },
+  '/api/unlock': {
+    methods: ['POST'],
+    control: true,
+    handler: (r) => legacy(r, 'Failed to unlock screen'),
+  },
+  '/api/remote/tap': { methods: ['POST'], control: true, handler: handleRemoteTap },
+  '/api/remote/swipe': { methods: ['POST'], control: true, handler: handleRemoteSwipe },
+  '/api/remote/text': { methods: ['POST'], control: true, handler: handleRemoteText },
+  '/api/remote/keyboard': {
+    methods: ['GET', 'POST'],
+    control: true,
+    handler: handleKeyboardComboRoute,
+  },
+  '/api/app/install': { methods: ['POST'], control: true, handler: handleAppInstall },
+  '/api/app/uninstall': { methods: ['POST'], control: true, handler: handleAppUninstall },
 };
 
-// Main request handler
-export async function handleRestRequest(request: HttpRequest): Promise<HttpResponse> {
-  const route = ROUTES[request.path];
+// Route paths that only accept POST; a GET hits them with 405.
+function isPostOnly(path: string): boolean {
+  const route = ROUTES[path];
+  return route !== undefined && route.methods.length === 1 && route.methods[0] === 'POST';
+}
 
-  if (!route) {
-    return errorResponse(404, `Unknown endpoint: ${request.path}`);
+// Main request handler
+export async function handleRestRequest(
+  request: HttpRequest,
+  config: RestApiConfig
+): Promise<HttpResponse> {
+  if (request.method === 'OPTIONS') {
+    return { status: 200, headers: {}, body: '' };
   }
 
-  const handler = route[request.method as keyof typeof route];
-  if (!handler) {
-    return errorResponse(405, `Method ${request.method} not allowed for ${request.path}`);
+  if (config.apiKey && config.apiKey.length > 0) {
+    if (request.headers['x-api-key'] !== config.apiKey) {
+      return jsonError(401, 'Invalid or missing API key');
+    }
+  }
+
+  let route = ROUTES[request.path];
+  let handler = route?.handler;
+  let control = route?.control ?? false;
+  let methods = route?.methods;
+
+  if (!route && request.path.startsWith('/api/remote/keyboard/')) {
+    const key = decodeURIComponent(request.path.slice('/api/remote/keyboard/'.length));
+    handler = (r) => handleKeyboardKeyRoute(r, key);
+    control = true;
+    methods = ['GET', 'POST'];
+    route = { methods, control, handler };
+  } else if (!route && request.path.startsWith('/api/remote/')) {
+    const key = request.path.slice('/api/remote/'.length).toLowerCase();
+    if (REMOTE_KEYS.includes(key)) {
+      handler = (r) => handleRemoteKeyRoute(r, key);
+      control = true;
+      methods = ['GET', 'POST'];
+      route = { methods, control, handler };
+    }
+  }
+
+  if (!route || !handler) {
+    // A GET on a known POST-only route is a 405, not a 404.
+    if (isPostOnly(request.path)) {
+      return jsonError(405, 'This endpoint requires POST with a JSON body');
+    }
+    return jsonError(404, 'Endpoint not found');
+  }
+
+  if (!methods!.includes(request.method as 'GET' | 'POST')) {
+    if (request.method === 'GET' && methods!.includes('POST')) {
+      return jsonError(405, 'This endpoint requires POST with a JSON body');
+    }
+    return jsonError(404, 'Endpoint not found');
+  }
+
+  if (control && !config.allowControl) {
+    return jsonError(403, 'Remote control is disabled');
   }
 
   try {
     return await handler(request);
   } catch (error) {
     console.error(`API error for ${request.method} ${request.path}:`, error);
-    return errorResponse(500, 'Internal Server Error');
+    return jsonError(500, error instanceof Error ? error.message : 'Internal server error');
   }
 }

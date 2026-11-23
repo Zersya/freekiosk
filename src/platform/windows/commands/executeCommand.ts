@@ -3,8 +3,6 @@
  * Routes commands to appropriate handlers.
  */
 
-import { getVkCode } from '../input/keymap';
-
 export interface CommandResult {
   success: boolean;
   message?: string;
@@ -108,14 +106,6 @@ export const restartHandler: CommandHandler = {
   },
 };
 
-// Screenshot
-export const screenshotHandler: CommandHandler = {
-  async execute() {
-    // TODO: Wire to native ScreenCaptureModule
-    return { success: true, message: 'Screenshot captured' };
-  },
-};
-
 // Lock screen
 export const lockHandler: CommandHandler = {
   async execute() {
@@ -158,34 +148,6 @@ export const bluetoothHandler: CommandHandler = {
   },
 };
 
-// Key injection
-export const keyHandler: CommandHandler = {
-  async execute(params) {
-    const key = params.key ?? params.value ?? '';
-    if (!key) {
-      return { success: false, error: 'Key is required' };
-    }
-    const vkCode = getVkCode(String(key));
-    if (vkCode === undefined) {
-      return { success: false, error: `Unknown key: ${key}` };
-    }
-    // TODO: Wire to native InputInjectionModule
-    return { success: true, message: `Key ${key} injected`, data: { vkCode } };
-  },
-};
-
-// Text injection
-export const textHandler: CommandHandler = {
-  async execute(params) {
-    const text = params.text ?? params.value ?? '';
-    if (!text) {
-      return { success: false, error: 'Text is required' };
-    }
-    // TODO: Wire to native InputInjectionModule
-    return { success: true, message: `Text injected: ${text}` };
-  },
-};
-
 // Command registry
 const COMMAND_REGISTRY: Record<string, CommandHandler> = {
   '/api/screen': screenHandler,
@@ -198,14 +160,11 @@ const COMMAND_REGISTRY: Record<string, CommandHandler> = {
   '/api/url': urlHandler,
   '/api/media': mediaHandler,
   '/api/restart': restartHandler,
-  '/api/screenshot': screenshotHandler,
   '/api/lock': lockHandler,
   '/api/unlock': unlockHandler,
   '/api/settings': settingsHandler,
   '/api/wifi': wifiHandler,
   '/api/bluetooth': bluetoothHandler,
-  '/api/key': keyHandler,
-  '/api/text': textHandler,
 };
 
 export function getCommandHandler(path: string): CommandHandler | undefined {

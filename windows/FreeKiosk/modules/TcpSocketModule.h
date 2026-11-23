@@ -2,7 +2,8 @@
 
 #include "NativeModules.h"
 #include <string>
-#include <map>
+#include <string_view>
+#include <memory>
 #include <mutex>
 #include <thread>
 #include <atomic>
@@ -33,47 +34,49 @@ struct TcpSocketModule {
   void connect(std::string host, int port, winrt::Microsoft::ReactNative::ReactPromise<int> promise) noexcept;
 
   REACT_METHOD(send)
-  void send(int socketId, std::string data, winrt::Microsoft::ReactNative::ReactPromise<void> promise) noexcept;
+  void send(int socketId, std::string base64, winrt::Microsoft::ReactNative::ReactPromise<void> promise) noexcept;
 
   REACT_METHOD(close)
   void close(int socketId, winrt::Microsoft::ReactNative::ReactPromise<void> promise) noexcept;
 
-  // Event emitters (set by RN framework)
-  REACT_EVENT(onTcpData)
-  std::function<void(int socketId, std::string data)> onTcpData{nullptr};
+  // MJPEG streaming
+  REACT_METHOD(startMjpegStream)
+  void startMjpegStream(int socketId, int intervalMs, int quality, int maxDimension, winrt::Microsoft::ReactNative::ReactPromise<void> promise) noexcept;
 
-  REACT_EVENT(onTcpConnection)
-  std::function<void(int socketId, std::string remoteAddress, int remotePort)> onTcpConnection{nullptr};
-
-  REACT_EVENT(onTcpError)
-  std::function<void(int socketId, std::string error)> onTcpError{nullptr};
-
-  REACT_EVENT(onTcpClose)
-  std::function<void(int socketId)> onTcpClose{nullptr};
+  REACT_METHOD(stopMjpegStream)
+  void stopMjpegStream(winrt::Microsoft::ReactNative::ReactPromise<void> promise) noexcept;
 
   winrt::Microsoft::ReactNative::ReactContext m_reactContext;
 
 private:
-  struct SocketInfo {
+  struct SocketState {
     SOCKET socket{INVALID_SOCKET};
     int socketId{0};
+    int serverId{0};
     std::string remoteAddress;
     int remotePort{0};
+    std::mutex writeMutex;
+    std::atomic<bool> closed{false};
   };
 
   void InitializeWinsock() noexcept;
   void Cleanup() noexcept;
   void HandleServerAccept(SOCKET listenSocket, int serverId) noexcept;
-  void HandleClientConnection(SOCKET clientSocket, sockaddr_in clientAddr) noexcept;
+  void HandleClientConnection(SOCKET clientSocket, sockaddr_in clientAddr, int serverId) noexcept;
   void ReadSocketData(int socketId) noexcept;
+  void CloseSocketInternal(int socketId, bool emitClose) noexcept;
+  bool SendAll(SocketState &s, uint8_t const *data, size_t len) noexcept;
+  void Emit(std::wstring_view name, winrt::Microsoft::ReactNative::JSValueObject &&payload) noexcept;
+  void EmitSocketError(int socketId, std::string const &message) noexcept;
 
   bool m_wsaInitialized{false};
   WSADATA m_wsaData{};
-  std::map<int, SocketInfo> m_sockets;
+  std::map<int, std::shared_ptr<SocketState>> m_sockets;
   std::map<int, SOCKET> m_servers;
   std::mutex m_mutex;
   int m_nextSocketId{1};
   int m_nextServerId{1};
+  std::atomic<int> m_mjpegSocketId{-1};
 };
 
 } // namespace winrt::FreeKiosk::implementation

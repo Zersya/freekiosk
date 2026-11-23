@@ -9,6 +9,9 @@
 #include <iphlpapi.h>
 #include <lmcons.h>
 #include <sysinfoapi.h>
+#include <cctype>
+#include <cstdio>
+#include <winternl.h>
 
 #pragma comment(lib, "ws2_32.lib")
 #pragma comment(lib, "iphlpapi.lib")
@@ -139,6 +142,115 @@ void SystemInfoModule::getIpAddress(ReactPromise<std::string> promise) noexcept 
 
 void SystemInfoModule::getSerialNumber(ReactPromise<std::string> promise) noexcept {
   promise.Resolve("");
+}
+
+namespace {
+
+std::string JsonEscape(std::string const &s) {
+  std::string out;
+  out.reserve(s.size() + 8);
+  for (unsigned char c : s) {
+    switch (c) {
+      case '"': out += "\\\""; break;
+      case '\\': out += "\\\\"; break;
+      case '\b': out += "\\b"; break;
+      case '\f': out += "\\f"; break;
+      case '\n': out += "\\n"; break;
+      case '\r': out += "\\r"; break;
+      case '\t': out += "\\t"; break;
+      default:
+        if (c < 0x20) {
+          char buf[8];
+          snprintf(buf, sizeof(buf), "\\u%04x", c);
+          out += buf;
+        } else {
+          out += static_cast<char>(c);
+        }
+    }
+  }
+  return out;
+}
+
+std::string WideToUtf8(std::wstring const &w) {
+  if (w.empty()) return {};
+  int len = WideCharToMultiByte(CP_UTF8, 0, w.c_str(), static_cast<int>(w.size()), nullptr, 0, nullptr, nullptr);
+  if (len <= 0) return {};
+  std::string s(static_cast<size_t>(len), '\0');
+  WideCharToMultiByte(CP_UTF8, 0, w.c_str(), static_cast<int>(w.size()), s.data(), len, nullptr, nullptr);
+  return s;
+}
+
+std::string ReadRegString(HKEY root, wchar_t const *subKey, wchar_t const *value) {
+  HKEY key;
+  if (RegOpenKeyExW(root, subKey, 0, KEY_READ | KEY_WOW64_64KEY, &key) != ERROR_SUCCESS) {
+    return {};
+  }
+  DWORD type = 0;
+  DWORD size = 0;
+  std::wstring result;
+  if (RegQueryValueExW(key, value, nullptr, &type, nullptr, &size) == ERROR_SUCCESS && size > sizeof(wchar_t)) {
+    result.resize(size / sizeof(wchar_t));
+    RegQueryValueExW(key, value, nullptr, &type, reinterpret_cast<LPBYTE>(result.data()), &size);
+    if (!result.empty() && result.back() == L'\0') {
+      result.pop_back();
+    }
+  }
+  RegCloseKey(key);
+  return WideToUtf8(result);
+}
+
+} // namespace
+
+void SystemInfoModule::getPlatformInfo(ReactPromise<std::string> promise) noexcept {
+  // OS version via RtlGetVersion from ntdll.
+  std::string osVersion;
+  unsigned long osBuild = 0;
+  HMODULE ntdll = GetModuleHandleW(L"ntdll.dll");
+  if (ntdll) {
+    auto rtlGetVersion = reinterpret_cast<LONG(WINAPI *)(PRTL_OSVERSIONINFOW)>(
+        GetProcAddress(ntdll, "RtlGetVersion"));
+    if (rtlGetVersion) {
+      RTL_OSVERSIONINFOW info = {};
+      info.dwOSVersionInfoSize = sizeof(info);
+      if (rtlGetVersion(&info) == 0) {
+        osVersion = std::to_string(info.dwMajorVersion) + "." + std::to_string(info.dwMinorVersion) + "." +
+            std::to_string(info.dwBuildNumber);
+        osBuild = info.dwBuildNumber;
+      }
+    }
+  }
+
+  std::string manufacturer = ReadRegString(HKEY_LOCAL_MACHINE, L"HARDWARE\\DESCRIPTION\\System\\BIOS",
+                                           L"SystemManufacturer");
+  std::string model = ReadRegString(HKEY_LOCAL_MACHINE, L"HARDWARE\\DESCRIPTION\\System\\BIOS",
+                                    L"SystemProductName");
+
+  wchar_t computerName[MAX_COMPUTERNAME_LENGTH + 1] = {};
+  DWORD computerNameLen = MAX_COMPUTERNAME_LENGTH + 1;
+  std::string computerNameUtf8;
+  if (GetComputerNameW(computerName, &computerNameLen)) {
+    computerNameUtf8 = WideToUtf8(std::wstring(computerName, computerNameLen));
+  }
+
+  std::string machineId = ReadRegString(HKEY_LOCAL_MACHINE, L"SOFTWARE\\Microsoft\\Cryptography", L"MachineGuid");
+  {
+    std::string cleaned;
+    for (char c : machineId) {
+      if (c != '-') cleaned += static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
+    }
+    if (cleaned.size() > 16) {
+      cleaned.resize(16);
+    }
+    machineId = cleaned;
+  }
+
+  std::string json = "{\"osVersion\":\"" + JsonEscape(osVersion) + "\"" +
+      ",\"osBuild\":" + std::to_string(osBuild) +
+      ",\"manufacturer\":\"" + JsonEscape(manufacturer) + "\"" +
+      ",\"model\":\"" + JsonEscape(model) + "\"" +
+      ",\"computerName\":\"" + JsonEscape(computerNameUtf8) + "\"" +
+      ",\"machineId\":\"" + JsonEscape(machineId) + "\"}";
+  promise.Resolve(json);
 }
 
 } // namespace winrt::FreeKiosk::implementation

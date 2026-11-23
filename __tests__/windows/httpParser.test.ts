@@ -1,15 +1,18 @@
 /**
- * Tests for Windows HTTP parser.
+ * Tests for the Windows HTTP parser and response helpers.
  */
 
 import {
   parseHttpRequest,
-  buildHttpResponse,
-  jsonResponse,
-  errorResponse,
-  textResponse,
-  bufferResponse,
+  jsonSuccess,
+  jsonError,
+  imageResponse,
+  mjpegResponse,
+  serializeHead,
+  bodyByteLength,
+  CORS_HEADERS,
 } from '../../src/platform/windows/rest/httpParser';
+import { bytesToBinaryString, utf8Encode } from '../../src/platform/windows/net/bytes';
 
 describe('parseHttpRequest', () => {
   it('parses a simple GET request', () => {
@@ -22,14 +25,15 @@ describe('parseHttpRequest', () => {
     expect(req.body).toBe('');
   });
 
-  it('parses a POST request with body', () => {
-    const raw = 'POST /api/brightness HTTP/1.1\r\nHost: localhost\r\nContent-Type: application/json\r\nContent-Length: 15\r\n\r\n{"level": 50}';
+  it('parses a POST request with a UTF-8 JSON body', () => {
+    const body = '{"text":"é"}';
+    const raw =
+      'POST /api/remote/text HTTP/1.1\r\nHost: localhost\r\nContent-Type: application/json\r\n\r\n' +
+      bytesToBinaryString(utf8Encode(body));
     const req = parseHttpRequest(raw);
 
     expect(req.method).toBe('POST');
-    expect(req.path).toBe('/api/brightness');
-    expect(req.headers['content-type']).toBe('application/json');
-    expect(req.body).toBe('{"level": 50}');
+    expect(req.body).toBe(body);
   });
 
   it('parses query parameters', () => {
@@ -41,6 +45,14 @@ describe('parseHttpRequest', () => {
     expect(req.query['page']).toBe('2');
   });
 
+  it('decodes percent-encoded and + query values', () => {
+    const raw = 'GET /api/remote/keyboard?map=ctrl%2Bc&a=b+c HTTP/1.1\r\nHost: x\r\n\r\n';
+    const req = parseHttpRequest(raw);
+
+    expect(req.query['map']).toBe('ctrl+c');
+    expect(req.query['a']).toBe('b c');
+  });
+
   it('parses headers case-insensitively', () => {
     const raw = 'GET /api/test HTTP/1.1\r\nHOST: localhost\r\nContent-Type: application/json\r\n\r\n';
     const req = parseHttpRequest(raw);
@@ -48,73 +60,65 @@ describe('parseHttpRequest', () => {
     expect(req.headers['host']).toBe('localhost');
     expect(req.headers['content-type']).toBe('application/json');
   });
-
-  it('handles empty body', () => {
-    const raw = 'GET /api/test HTTP/1.1\r\nHost: localhost\r\n\r\n';
-    const req = parseHttpRequest(raw);
-
-    expect(req.body).toBe('');
-  });
-});
-
-describe('buildHttpResponse', () => {
-  it('builds a JSON response', () => {
-    const resp = jsonResponse({ status: 'ok' });
-    const raw = buildHttpResponse(resp);
-
-    expect(raw).toContain('HTTP/1.1 200 OK');
-    expect(raw).toContain('content-type: application/json');
-    expect(raw).toContain('{"status":"ok"}');
-  });
-
-  it('builds an error response', () => {
-    const resp = errorResponse(404, 'Not Found');
-    const raw = buildHttpResponse(resp);
-
-    expect(raw).toContain('HTTP/1.1 404 Not Found');
-    expect(raw).toContain('{"error":"Not Found"}');
-  });
-
-  it('builds a text response', () => {
-    const resp = textResponse('Hello World');
-    const raw = buildHttpResponse(resp);
-
-    expect(raw).toContain('HTTP/1.1 200 OK');
-    expect(raw).toContain('content-type: text/plain');
-    expect(raw).toContain('Hello World');
-  });
-
-  it('includes content-length header', () => {
-    const resp = jsonResponse({ test: 'data' });
-    const raw = buildHttpResponse(resp);
-
-    expect(raw).toContain('content-length:');
-  });
-
-  it('includes connection close header', () => {
-    const resp = jsonResponse({ test: 'data' });
-    const raw = buildHttpResponse(resp);
-
-    expect(raw).toContain('connection: close');
-  });
 });
 
 describe('response helpers', () => {
-  it('jsonResponse sets correct status', () => {
-    const resp = jsonResponse({ ok: true }, 201);
-    expect(resp.status).toBe(201);
-    expect(resp.statusText).toBe('Created');
+  it('jsonSuccess wraps data in the MDM envelope', () => {
+    const resp = jsonSuccess({ a: 1 });
+    const body = JSON.parse(resp.body!);
+
+    expect(resp.status).toBe(200);
+    expect(body.success).toBe(true);
+    expect(body.data).toEqual({ a: 1 });
+    expect(Number.isInteger(body.timestamp)).toBe(true);
+    expect(body.timestamp).toBeLessThanOrEqual(Math.floor(Date.now() / 1000));
   });
 
-  it('errorResponse sets correct status', () => {
-    const resp = errorResponse(400, 'Bad Request');
-    expect(resp.status).toBe(400);
-    expect(resp.statusText).toBe('Bad Request');
+  it('jsonError emits the error envelope', () => {
+    const resp = jsonError(404, 'Endpoint not found');
+    const body = JSON.parse(resp.body!);
+
+    expect(resp.status).toBe(404);
+    expect(body.success).toBe(false);
+    expect(body.error).toBe('Endpoint not found');
+    expect(Number.isInteger(body.timestamp)).toBe(true);
   });
 
-  it('bufferResponse sets binary content type', () => {
-    const data = new Uint8Array([0x89, 0x50, 0x4e, 0x47]);
-    const resp = bufferResponse(data, 'image/png');
-    expect(resp.headers['content-type']).toBe('image/png');
+  it('imageResponse carries base64 with the given content type', () => {
+    const resp = imageResponse('QUJD', 'image/jpeg');
+    expect(resp.bodyBase64).toBe('QUJD');
+    expect(resp.headers['content-type']).toBe('image/jpeg');
+  });
+
+  it('mjpegResponse marks the stream kind', () => {
+    const resp = mjpegResponse();
+    expect(resp.stream).toBe('mjpeg');
+    expect(resp.headers['content-type']).toContain('multipart/x-mixed-replace');
+    expect(resp.headers['content-type']).toContain('freekiosk-frame');
+  });
+});
+
+describe('serializeHead', () => {
+  it('includes status line, headers, content-length and CORS', () => {
+    const resp = jsonSuccess({ ok: true });
+    const head = serializeHead(resp, bodyByteLength(resp));
+
+    expect(head).toContain('HTTP/1.1 200 OK');
+    expect(head).toContain('content-type: application/json');
+    expect(head).toContain('access-control-allow-headers: Content-Type, X-Api-Key');
+    expect(head).toContain('access-control-allow-origin: *');
+    expect(head).toContain('connection: close');
+    expect(head).toContain(`content-length: ${bodyByteLength(resp)}`);
+    expect(head.endsWith('\r\n\r\n')).toBe(true);
+  });
+
+  it('omits content-length when null', () => {
+    const head = serializeHead(mjpegResponse(), null);
+    expect(head).not.toContain('content-length');
+    expect(head).toContain('connection: close');
+  });
+
+  it('exports the CORS headers', () => {
+    expect(CORS_HEADERS['access-control-allow-methods']).toBe('GET, POST, OPTIONS');
   });
 });

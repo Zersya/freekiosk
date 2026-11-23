@@ -15,6 +15,12 @@ struct InputInjectionModule {
   REACT_METHOD(sendKey)
   void sendKey(int vkCode, bool keyDown, winrt::Microsoft::ReactNative::ReactPromise<void> promise) noexcept;
 
+  REACT_METHOD(tap)
+  void tap(double xNorm, double yNorm, winrt::Microsoft::ReactNative::ReactPromise<void> promise) noexcept;
+
+  REACT_METHOD(swipe)
+  void swipe(double x1, double y1, double x2, double y2, int durationMs, winrt::Microsoft::ReactNative::ReactPromise<void> promise) noexcept;
+
   REACT_METHOD(sendKeyCombo)
   void sendKeyCombo(std::string keys, winrt::Microsoft::ReactNative::ReactPromise<void> promise) noexcept;
 

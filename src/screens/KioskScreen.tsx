@@ -755,6 +755,15 @@ const KioskScreen: React.FC<KioskScreenProps> = ({ navigation }) => {
       // Auto-start the API server if enabled
       await ApiService.autoStart();
 
+      if (IS_WINDOWS) {
+        try {
+          const info = await mdmAgent.getAgentInfo();
+          if (info.enabled) await mdmAgent.startAgent();
+        } catch (e) {
+          console.warn('[MDM] Windows agent autostart failed', e);
+        }
+      }
+
       // Auto-start MQTT client if enabled
       try {
         await ApiService.autoStartMqtt();
@@ -1027,6 +1036,7 @@ const KioskScreen: React.FC<KioskScreenProps> = ({ navigation }) => {
   );
 
   const showInstallerFab = useMemo(() => {
+    if (IS_WINDOWS) return false;
     if (!mdmEnrolled || isScreensaverActive || isScheduledSleep) return false;
 
     if (displayMode === 'external_app') {

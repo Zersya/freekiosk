@@ -48,6 +48,9 @@ struct SystemInfoModule {
   REACT_METHOD(getSerialNumber)
   void getSerialNumber(winrt::Microsoft::ReactNative::ReactPromise<std::string> promise) noexcept;
 
+  REACT_METHOD(getPlatformInfo)
+  void getPlatformInfo(winrt::Microsoft::ReactNative::ReactPromise<std::string> promise) noexcept;
+
   winrt::Microsoft::ReactNative::ReactContext m_reactContext;
 };
 

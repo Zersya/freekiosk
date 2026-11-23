@@ -1,10 +1,17 @@
 /**
  * TCP socket abstraction for Windows.
- * Bridges to native TcpSocketModule (C++ implementation in Step 6).
- * Provides a Node.js-like API for TCP servers and clients.
+ * Bridges to native TcpSocketModule (C++).
+ * All data strings are "binary strings" (one char code 0-255 per byte);
+ * the native side exchanges base64.
  */
 
-import { NativeModules, NativeEventEmitter } from 'react-native';
+import { NativeModules, DeviceEventEmitter } from 'react-native';
+import {
+  base64Decode,
+  base64Encode,
+  binaryStringToBytes,
+  bytesToBinaryString,
+} from './bytes';
 
 const { TcpSocketModule } = NativeModules;
 
@@ -22,6 +29,8 @@ export interface TcpServer {
   onError(callback: TcpErrorCallback): void;
   onClose(callback: TcpCloseCallback): void;
   send(socketId: number, data: string): Promise<void>;
+  sendBase64(socketId: number, base64: string): Promise<void>;
+  startMjpegStream(socketId: number, intervalMs: number, quality: number, maxDimension: number): Promise<void>;
   close(socketId: number): Promise<void>;
   closeServer(): Promise<void>;
   getConnections(): TcpSocket[];
@@ -37,10 +46,11 @@ export interface TcpClient extends TcpSocket {
 
 export interface TcpDataEvent {
   socketId: number;
-  data: string;
+  data: string; // base64
 }
 
 export interface TcpConnectionEvent {
+  serverId: number;
   socketId: number;
   remoteAddress: string;
   remotePort: number;
@@ -58,14 +68,53 @@ export interface TcpCloseEvent {
 export type TcpDataCallback = (data: string) => void;
 export type TcpConnectionCallback = (socket: TcpSocket) => void;
 export type TcpErrorCallback = (error: string) => void;
-export type TcpCloseCallback = () => void;
+export type TcpCloseCallback = (socketId: number) => void;
+
+// ---------------------------------------------------------------------------
+// Module-level event dispatch. The native module emits through
+// DeviceEventEmitter; we register each event once and fan out.
+
+const serversById = new Map<number, TcpServerImpl>();
+const socketHandlers = new Map<
+  number,
+  { onData?: TcpDataCallback; onError?: TcpErrorCallback; onClose?: TcpCloseCallback }
+>();
+
+let listenersRegistered = false;
+
+function ensureListeners(): void {
+  if (listenersRegistered) return;
+  listenersRegistered = true;
+
+  DeviceEventEmitter.addListener('tcpConnection', (event: TcpConnectionEvent) => {
+    serversById.get(event.serverId)?.handleConnectionEvent(event);
+  });
+
+  DeviceEventEmitter.addListener('tcpData', (event: TcpDataEvent) => {
+    const h = socketHandlers.get(event.socketId);
+    h?.onData?.(bytesToBinaryString(base64Decode(event.data)));
+  });
+
+  DeviceEventEmitter.addListener('tcpError', (event: TcpErrorEvent) => {
+    const h = socketHandlers.get(event.socketId);
+    h?.onError?.(event.error);
+  });
+
+  DeviceEventEmitter.addListener('tcpClose', (event: TcpCloseEvent) => {
+    const h = socketHandlers.get(event.socketId);
+    socketHandlers.delete(event.socketId);
+    h?.onClose?.(event.socketId);
+  });
+}
+
+function sendBinary(socketId: number, binary: string): Promise<void> {
+  return TcpSocketModule.send(socketId, base64Encode(binaryStringToBytes(binary)));
+}
 
 export class TcpServerImpl implements TcpServer {
   id: number;
   port: number;
-  private eventEmitter: NativeEventEmitter;
   private connections: Map<number, TcpSocket> = new Map();
-  private dataCallbacks: Map<number, TcpDataCallback> = new Map();
   private connectionCallback?: TcpConnectionCallback;
   private errorCallback?: TcpErrorCallback;
   private closeCallback?: TcpCloseCallback;
@@ -73,37 +122,20 @@ export class TcpServerImpl implements TcpServer {
   constructor(id: number, port: number) {
     this.id = id;
     this.port = port;
-    this.eventEmitter = new NativeEventEmitter(TcpSocketModule);
-    this.setupListeners();
+    ensureListeners();
+    serversById.set(id, this);
   }
 
-  private setupListeners(): void {
-    this.eventEmitter.addListener('onTcpConnection', (event: TcpConnectionEvent) => {
-      if (event.socketId === this.id) {
-        const socket: TcpSocket = {
-          id: event.socketId,
-          remoteAddress: event.remoteAddress,
-          remotePort: event.remotePort,
-        };
-        this.connections.set(event.socketId, socket);
-        this.connectionCallback?.(socket);
-      }
-    });
-
-    this.eventEmitter.addListener('onTcpData', (event: TcpDataEvent) => {
-      const callback = this.dataCallbacks.get(event.socketId);
-      callback?.(event.data);
-    });
-
-    this.eventEmitter.addListener('onTcpError', (event: TcpErrorEvent) => {
-      this.errorCallback?.(event.error);
-    });
-
-    this.eventEmitter.addListener('onTcpClose', (event: TcpCloseEvent) => {
-      this.connections.delete(event.socketId);
-      this.dataCallbacks.delete(event.socketId);
-      this.closeCallback?.();
-    });
+  /** Called by the module-level dispatcher for matching tcpConnection events. */
+  handleConnectionEvent(event: TcpConnectionEvent): void {
+    const socket: TcpSocket = {
+      id: event.socketId,
+      remoteAddress: event.remoteAddress,
+      remotePort: event.remotePort,
+    };
+    this.connections.set(event.socketId, socket);
+    socketHandlers.set(event.socketId, {});
+    this.connectionCallback?.(socket);
   }
 
   onConnection(callback: TcpConnectionCallback): void {
@@ -111,7 +143,9 @@ export class TcpServerImpl implements TcpServer {
   }
 
   onData(socketId: number, callback: TcpDataCallback): void {
-    this.dataCallbacks.set(socketId, callback);
+    const h = socketHandlers.get(socketId) ?? {};
+    h.onData = callback;
+    socketHandlers.set(socketId, h);
   }
 
   onError(callback: TcpErrorCallback): void {
@@ -123,17 +157,35 @@ export class TcpServerImpl implements TcpServer {
   }
 
   async send(socketId: number, data: string): Promise<void> {
-    await TcpSocketModule.send(socketId, data);
+    await sendBinary(socketId, data);
+  }
+
+  async sendBase64(socketId: number, base64: string): Promise<void> {
+    await TcpSocketModule.send(socketId, base64);
+  }
+
+  async startMjpegStream(
+    socketId: number,
+    intervalMs: number,
+    quality: number,
+    maxDimension: number
+  ): Promise<void> {
+    await TcpSocketModule.startMjpegStream(socketId, intervalMs, quality, maxDimension);
   }
 
   async close(socketId: number): Promise<void> {
     await TcpSocketModule.close(socketId);
     this.connections.delete(socketId);
-    this.dataCallbacks.delete(socketId);
+    socketHandlers.delete(socketId);
   }
 
   async closeServer(): Promise<void> {
     await TcpSocketModule.closeServer(this.id);
+    serversById.delete(this.id);
+    for (const socketId of this.connections.keys()) {
+      socketHandlers.delete(socketId);
+    }
+    this.connections.clear();
   }
 
   getConnections(): TcpSocket[] {
@@ -145,57 +197,40 @@ export class TcpClientImpl implements TcpClient {
   id: number;
   remoteAddress: string;
   remotePort: number;
-  private eventEmitter: NativeEventEmitter;
-  private dataCallback?: TcpDataCallback;
-  private errorCallback?: TcpErrorCallback;
-  private closeCallback?: TcpCloseCallback;
 
   constructor(id: number, remoteAddress: string, remotePort: number) {
     this.id = id;
     this.remoteAddress = remoteAddress;
     this.remotePort = remotePort;
-    this.eventEmitter = new NativeEventEmitter(TcpSocketModule);
-    this.setupListeners();
+    ensureListeners();
+    socketHandlers.set(id, {});
   }
 
-  private setupListeners(): void {
-    this.eventEmitter.addListener('onTcpData', (event: TcpDataEvent) => {
-      if (event.socketId === this.id) {
-        this.dataCallback?.(event.data);
-      }
-    });
-
-    this.eventEmitter.addListener('onTcpError', (event: TcpErrorEvent) => {
-      if (event.socketId === this.id) {
-        this.errorCallback?.(event.error);
-      }
-    });
-
-    this.eventEmitter.addListener('onTcpClose', (event: TcpCloseEvent) => {
-      if (event.socketId === this.id) {
-        this.closeCallback?.();
-      }
-    });
+  private handlers() {
+    const h = socketHandlers.get(this.id) ?? {};
+    socketHandlers.set(this.id, h);
+    return h;
   }
 
   onData(callback: TcpDataCallback): void {
-    this.dataCallback = callback;
+    this.handlers().onData = callback;
   }
 
   onError(callback: TcpErrorCallback): void {
-    this.errorCallback = callback;
+    this.handlers().onError = callback;
   }
 
   onClose(callback: TcpCloseCallback): void {
-    this.closeCallback = callback;
+    this.handlers().onClose = callback;
   }
 
   async send(data: string): Promise<void> {
-    await TcpSocketModule.send(this.id, data);
+    await sendBinary(this.id, data);
   }
 
   async close(): Promise<void> {
     await TcpSocketModule.close(this.id);
+    socketHandlers.delete(this.id);
   }
 }
 
@@ -211,9 +246,10 @@ export async function connect(host: string, port: number): Promise<TcpClient> {
 }
 
 export async function send(socketId: number, data: string): Promise<void> {
-  await TcpSocketModule.send(socketId, data);
+  await sendBinary(socketId, data);
 }
 
 export async function close(socketId: number): Promise<void> {
   await TcpSocketModule.close(socketId);
+  socketHandlers.delete(socketId);
 }

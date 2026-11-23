@@ -64,6 +64,20 @@ jobs:
           & $signtool sign /fd SHA256 /a /f ".\FreeKioskTestCert.pfx" /p "FreeKiosk" ".\TransKIOSK.msixbundle"
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
+      - name: MDM smoke test
+        shell: pwsh
+        run: ./scripts/windows-mdm-smoke.ps1 -CertPath .\FreeKioskTestCert.cer -PfxPath .\FreeKioskTestCert.pfx -PfxPassword FreeKiosk
+
+      - name: Upload smoke artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: TransKIOSK-Windows-smoke
+          path: |
+            smoke-screenshot.jpg
+            smoke-stream.bin
+          if-no-files-found: warn
+
       - name: Write install instructions
         shell: pwsh
         run: |

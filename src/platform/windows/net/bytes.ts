@@ -202,3 +202,134 @@ export function decodeRemainingLength(buffer: ByteBuffer): number {
   } while ((digit & 0x80) !== 0);
   return value;
 }
+
+// ---------------------------------------------------------------------------
+// Pure-TS string/byte codecs (no atob/btoa/TextEncoder/TextDecoder).
+
+const B64_ALPHABET =
+  'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/';
+
+export function utf8Encode(s: string): Uint8Array {
+  const bytes: number[] = [];
+  for (let i = 0; i < s.length; i++) {
+    let cp = s.charCodeAt(i);
+    if (cp >= 0xd800 && cp <= 0xdbff && i + 1 < s.length) {
+      const lo = s.charCodeAt(i + 1);
+      if (lo >= 0xdc00 && lo <= 0xdfff) {
+        cp = 0x10000 + ((cp - 0xd800) << 10) + (lo - 0xdc00);
+        i++;
+      }
+    }
+    if (cp < 0x80) {
+      bytes.push(cp);
+    } else if (cp < 0x800) {
+      bytes.push(0xc0 | (cp >> 6), 0x80 | (cp & 0x3f));
+    } else if (cp < 0x10000) {
+      bytes.push(0xe0 | (cp >> 12), 0x80 | ((cp >> 6) & 0x3f), 0x80 | (cp & 0x3f));
+    } else {
+      bytes.push(
+        0xf0 | (cp >> 18),
+        0x80 | ((cp >> 12) & 0x3f),
+        0x80 | ((cp >> 6) & 0x3f),
+        0x80 | (cp & 0x3f)
+      );
+    }
+  }
+  return new Uint8Array(bytes);
+}
+
+export function utf8Decode(b: Uint8Array): string {
+  let out = '';
+  let i = 0;
+  while (i < b.length) {
+    const b0 = b[i];
+    let cp: number;
+    if (b0 < 0x80) {
+      cp = b0;
+      i += 1;
+    } else if (b0 < 0xe0) {
+      cp = ((b0 & 0x1f) << 6) | (b[i + 1] & 0x3f);
+      i += 2;
+    } else if (b0 < 0xf0) {
+      cp = ((b0 & 0x0f) << 12) | ((b[i + 1] & 0x3f) << 6) | (b[i + 2] & 0x3f);
+      i += 3;
+    } else {
+      cp =
+        ((b0 & 0x07) << 18) |
+        ((b[i + 1] & 0x3f) << 12) |
+        ((b[i + 2] & 0x3f) << 6) |
+        (b[i + 3] & 0x3f);
+      i += 4;
+    }
+    if (cp > 0xffff) {
+      const v = cp - 0x10000;
+      out += String.fromCharCode(0xd800 + (v >> 10), 0xdc00 + (v & 0x3ff));
+    } else {
+      out += String.fromCharCode(cp);
+    }
+  }
+  return out;
+}
+
+export function base64Encode(b: Uint8Array): string {
+  let out = '';
+  for (let i = 0; i < b.length; i += 3) {
+    const b0 = b[i];
+    const b1 = i + 1 < b.length ? b[i + 1] : -1;
+    const b2 = i + 2 < b.length ? b[i + 2] : -1;
+    out += B64_ALPHABET[b0 >> 2];
+    out += B64_ALPHABET[((b0 & 0x03) << 4) | (b1 === -1 ? 0 : b1 >> 4)];
+    out += b1 === -1 ? '=' : B64_ALPHABET[((b1 & 0x0f) << 2) | (b2 === -1 ? 0 : b2 >> 6)];
+    out += b2 === -1 ? '=' : B64_ALPHABET[b2 & 0x3f];
+  }
+  return out;
+}
+
+export function base64Decode(s: string): Uint8Array {
+  const bytes: number[] = [];
+  let acc = 0;
+  let accBits = 0;
+  for (const ch of s) {
+    if (ch === '=') break;
+    const v = B64_ALPHABET.indexOf(ch);
+    if (v === -1) continue;
+    acc = (acc << 6) | v;
+    accBits += 6;
+    if (accBits >= 8) {
+      accBits -= 8;
+      bytes.push((acc >> accBits) & 0xff);
+    }
+  }
+  return new Uint8Array(bytes);
+}
+
+export function base64ByteLength(b64: string): number {
+  const len = b64.length;
+  const padding = b64.endsWith('==') ? 2 : b64.endsWith('=') ? 1 : 0;
+  return Math.floor((len * 3) / 4) - padding;
+}
+
+// A "binary string" has one char code (0-255) per byte.
+export function bytesToBinaryString(b: Uint8Array): string {
+  let out = '';
+  const CHUNK = 0x8000;
+  for (let i = 0; i < b.length; i += CHUNK) {
+    out += String.fromCharCode.apply(
+      null,
+      Array.from(b.subarray(i, i + CHUNK))
+    );
+  }
+  return out;
+}
+
+export function binaryStringToBytes(s: string): Uint8Array {
+  const out = new Uint8Array(s.length);
+  for (let i = 0; i < s.length; i++) {
+    const c = s.charCodeAt(i);
+    if (c > 0xff) {
+      throw new RangeError('binary string contains char > 0xFF');
+    }
+    out[i] = c;
+  }
+  return out;
+}

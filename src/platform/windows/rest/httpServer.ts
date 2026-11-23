@@ -1,16 +1,25 @@
 /**
- * HTTP server for Windows REST API.
- * Uses TCP abstraction to handle HTTP connections.
+ * HTTP server for the Windows REST API.
+ * Buffers binary strings over the TCP abstraction and serializes the
+ * three response kinds: UTF-8 text, base64 binary, and MJPEG streams.
  */
 
 import { createServer, TcpServer, TcpSocket } from '../net/tcp';
 import {
   parseHttpRequest,
-  buildHttpResponse,
+  serializeHead,
+  bodyByteLength,
   HttpRequest,
   HttpResponse,
-  errorResponse,
+  jsonError,
 } from './httpParser';
+import { utf8Encode, bytesToBinaryString } from '../net/bytes';
+
+const MAX_HEAD_BYTES = 16 * 1024;
+const MAX_BODY_BYTES = 1024 * 1024;
+const MJPEG_INTERVAL_MS = 250;
+const MJPEG_QUALITY = 60;
+const MJPEG_MAX_DIMENSION = 1080;
 
 export interface RequestHandler {
   (request: HttpRequest): Promise<HttpResponse>;
@@ -64,25 +73,66 @@ export class HttpServer {
     return this.port;
   }
 
+  private async sendResponse(socketId: number, response: HttpResponse): Promise<boolean> {
+    if (response.stream === 'mjpeg') {
+      await this.server?.send(socketId, serializeHead(response, null));
+      await this.server?.startMjpegStream(
+        socketId,
+        MJPEG_INTERVAL_MS,
+        MJPEG_QUALITY,
+        MJPEG_MAX_DIMENSION
+      );
+      // The native stream loop owns the socket now — do not close it.
+      return false;
+    }
+
+    if (response.bodyBase64 !== undefined) {
+      const head = serializeHead(response, bodyByteLength(response));
+      await this.server?.send(socketId, head);
+      await this.server?.sendBase64(socketId, response.bodyBase64);
+      return true;
+    }
+
+    const body = response.body ?? '';
+    const head = serializeHead(response, bodyByteLength(response));
+    const payload = head + bytesToBinaryString(utf8Encode(body));
+    await this.server?.send(socketId, payload);
+    return true;
+  }
+
   private async handleConnection(socket: TcpSocket): Promise<void> {
+    // Binary string buffer: one char code per byte so binary bodies survive.
     let buffer = '';
 
     this.server?.onData(socket.id, async (data: string) => {
       buffer += data;
 
-      // Check if we have a complete HTTP request
-      const headerEnd = buffer.indexOf('\r\n\r\n');
-      if (headerEnd === -1) {
+      const headEnd = buffer.indexOf('\r\n\r\n');
+      if (headEnd === -1) {
+        if (buffer.length > MAX_HEAD_BYTES) {
+          await this.sendResponse(socket.id, jsonError(413, 'Request header too large'));
+          await this.server?.close(socket.id);
+        }
         return; // Wait for more data
       }
+      if (headEnd > MAX_HEAD_BYTES) {
+        await this.sendResponse(socket.id, jsonError(413, 'Request header too large'));
+        await this.server?.close(socket.id);
+        return;
+      }
 
-      // Extract Content-Length to determine body size
-      const headers = buffer.slice(0, headerEnd);
+      // Content-Length counts bytes == binary string length.
+      const headers = buffer.slice(0, headEnd);
       const contentLengthMatch = headers.match(/content-length:\s*(\d+)/i);
       const contentLength = contentLengthMatch ? parseInt(contentLengthMatch[1], 10) : 0;
-      const bodyStart = headerEnd + 4;
-      const expectedLength = bodyStart + contentLength;
 
+      if (contentLength > MAX_BODY_BYTES) {
+        await this.sendResponse(socket.id, jsonError(413, 'Request body too large'));
+        await this.server?.close(socket.id);
+        return;
+      }
+
+      const expectedLength = headEnd + 4 + contentLength;
       if (buffer.length < expectedLength) {
         return; // Wait for more data
       }
@@ -93,61 +143,15 @@ export class HttpServer {
       try {
         const request = parseHttpRequest(rawRequest);
         const response = await this.handler(request);
-        const httpResponse = buildHttpResponse(response);
-        await this.server?.send(socket.id, httpResponse);
+        const shouldClose = await this.sendResponse(socket.id, response);
+        if (shouldClose) {
+          await this.server?.close(socket.id);
+        }
       } catch (error) {
         console.error('HTTP request handling error:', error);
-        const errorResp = errorResponse(500, 'Internal Server Error');
-        const httpResponse = buildHttpResponse(errorResp);
-        await this.server?.send(socket.id, httpResponse);
+        await this.sendResponse(socket.id, jsonError(500, 'Internal Server Error'));
+        await this.server?.close(socket.id);
       }
-
-      // Close connection after response (HTTP/1.0 style for simplicity)
-      await this.server?.close(socket.id);
     });
   }
-}
-
-// Default request handler that routes to REST API
-export async function defaultRequestHandler(_request: HttpRequest): Promise<HttpResponse> {
-  // This will be overridden by WindowsRestServer
-  return errorResponse(404, 'Not Found');
-}
-
-// Helper to create a simple HTTP server
-export async function createHttpServer(port: number, handler?: RequestHandler): Promise<HttpServer> {
-  const server = new HttpServer(port, handler || defaultRequestHandler);
-  await server.start();
-  return server;
-}
-
-// Helper for CORS headers
-export function corsHeaders(): Record<string, string> {
-  return {
-    'access-control-allow-origin': '*',
-    'access-control-allow-methods': 'GET, POST, PUT, DELETE, OPTIONS',
-    'access-control-allow-headers': 'Content-Type, Authorization',
-  };
-}
-
-// Handle OPTIONS preflight
-export function handleOptions(): HttpResponse {
-  return {
-    status: 204,
-    statusText: 'No Content',
-    headers: corsHeaders(),
-    body: '',
-  };
-}
-
-// Wrap handler with CORS
-export function withCors(handler: RequestHandler): RequestHandler {
-  return async (request) => {
-    if (request.method === 'OPTIONS') {
-      return handleOptions();
-    }
-    const response = await handler(request);
-    response.headers = { ...corsHeaders(), ...response.headers };
-    return response;
-  };
 }

@@ -1,13 +1,16 @@
 /**
  * HttpServerModule.windows.ts
  * Windows implementation of the HTTP server bridge.
- * Uses the TS protocol layer (WindowsRestServer) instead of native modules.
+ * Uses the TS protocol layer (rest/HttpServer) instead of native modules.
  */
 
-import { NativeEventEmitter } from 'react-native';
+import { NativeModules, NativeEventEmitter } from 'react-native';
 import { HttpRequest, HttpResponse } from '../platform/windows/rest/httpParser';
 import { handleRestRequest } from '../platform/windows/rest/restApi';
-import { HttpServer, withCors } from '../platform/windows/rest/httpServer';
+import { HttpServer } from '../platform/windows/rest/httpServer';
+import { setAppStatus } from '../platform/windows/status/appStatusStore';
+
+const { SystemInfoModule } = NativeModules;
 
 interface ServerInfo {
   running: boolean;
@@ -55,18 +58,14 @@ class HttpServerService {
     this.apiKey = apiKey;
     this.allowControl = allowControl;
 
-    const handler = withCors(async (request: HttpRequest): Promise<HttpResponse> => {
-      return this.handleRequest(request);
-    });
-
-    this.server = new HttpServer(port, handler);
+    this.server = new HttpServer(port, (request) => this.handleRequest(request));
     await this.server.start();
     this.running = true;
 
     return {
       success: true,
       port,
-      ip: this.getLocalIpSync(),
+      ip: await this.getLocalIp(),
     };
   }
 
@@ -97,7 +96,7 @@ class HttpServerService {
   async getServerInfo(): Promise<ServerInfo> {
     return {
       running: this.running,
-      ip: this.getLocalIpSync(),
+      ip: await this.getLocalIp(),
     };
   }
 
@@ -105,7 +104,11 @@ class HttpServerService {
    * Get local IP address
    */
   async getLocalIp(): Promise<string> {
-    return this.getLocalIpSync();
+    try {
+      return await SystemInfoModule.getIpAddress();
+    } catch {
+      return '0.0.0.0';
+    }
   }
 
   /**
@@ -113,6 +116,7 @@ class HttpServerService {
    */
   updateStatus(status: Record<string, unknown>): void {
     this.status = status;
+    setAppStatus(status);
   }
 
   /**
@@ -142,19 +146,6 @@ class HttpServerService {
   // Private methods
 
   private async handleRequest(request: HttpRequest): Promise<HttpResponse> {
-    // Check API key if required
-    if (this.apiKey && this.apiKey.length > 0) {
-      const authHeader = request.headers['authorization'] || request.headers['x-api-key'];
-      if (authHeader !== this.apiKey && authHeader !== `Bearer ${this.apiKey}`) {
-        return {
-          status: 401,
-          statusText: 'Unauthorized',
-          headers: { 'content-type': 'application/json' },
-          body: JSON.stringify({ error: 'Invalid API key' }),
-        };
-      }
-    }
-
     // Emit command event for ApiService to handle
     const command = this.mapPathToCommand(request.path);
     if (command && this.commandListener) {
@@ -162,8 +153,8 @@ class HttpServerService {
       this.commandListener(command, params);
     }
 
-    // Also handle via REST API for direct responses
-    return handleRestRequest(request);
+    // Routing, auth (X-Api-Key) and control gating live in restApi.
+    return handleRestRequest(request, { apiKey: this.apiKey, allowControl: this.allowControl });
   }
 
   private mapPathToCommand(path: string): string | null {
@@ -177,11 +168,8 @@ class HttpServerService {
       '/api/url': 'setUrl',
       '/api/volume': 'setVolume',
       '/api/restart': 'restart',
-      '/api/screenshot': 'screenshot',
       '/api/lock': 'lock',
       '/api/unlock': 'unlock',
-      '/api/key': 'key',
-      '/api/text': 'text',
     };
     return mapping[path] || null;
   }
@@ -195,11 +183,6 @@ class HttpServerService {
     }
   }
 
-  private getLocalIpSync(): string {
-    // Windows implementation will use native module in Step 6
-    // For now, return a placeholder
-    return '0.0.0.0';
-  }
 }
 
 // Export singleton instance

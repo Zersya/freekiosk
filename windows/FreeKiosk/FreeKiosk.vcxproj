@@ -118,6 +118,9 @@
     <ClInclude Include="modules/OverlayServiceModule.h" />
     <ClInclude Include="modules/HttpServerModule.h" />
     <ClInclude Include="modules/Win32Util.h" />
+    <ClInclude Include="modules/Base64.h" />
+    <ClInclude Include="modules/ScreenCapture.h" />
+    <ClInclude Include="modules/PackageInstallModule.h" />
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="FreeKiosk.cpp" />
@@ -135,6 +138,8 @@
     <ClCompile Include="modules/OverlayServiceModule.cpp" />
     <ClCompile Include="modules/HttpServerModule.cpp" />
     <ClCompile Include="modules/Win32Util.cpp" />
+    <ClCompile Include="modules/ScreenCapture.cpp" />
+    <ClCompile Include="modules/PackageInstallModule.cpp" />
     <ClCompile Include="pch.cpp">
       <PrecompiledHeader Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">Create</PrecompiledHeader>
       <PrecompiledHeader Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">Create</PrecompiledHeader>
