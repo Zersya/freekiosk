@@ -72,6 +72,11 @@ _Use_decl_annotations_ int CALLBACK WinMain(HINSTANCE instance, HINSTANCE, PSTR 
   settings.PackageProviders().Append(winrt::make<CompReactPackageProvider>());
   mark("providers appended");
 
+  settings.InstanceCreated([mark](auto &&, auto &&) { mark("InstanceCreated"); });
+  settings.InstanceLoaded([mark](auto &&, auto &&args) {
+    mark(args.Failed() ? "InstanceLoaded FAILED" : "InstanceLoaded OK");
+  });
+
 #if BUNDLE
   // Load the JS bundle from a file (not Metro):
   // Set the path (on disk) where the .bundle file is located
