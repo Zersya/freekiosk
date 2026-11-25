@@ -99,7 +99,8 @@ while ((Get-Date) -lt $deadline) {
   } catch {
     $listening = (Get-NetTCPConnection -LocalPort 8080 -State Listen -ErrorAction SilentlyContinue) -ne $null
     $proc = (Get-Process FreeKiosk -ErrorAction SilentlyContinue) -ne $null
-    Write-Host "waiting: proc=$proc port8080=$listening"
+    $errMsg = $_.Exception.Message
+    Write-Host "waiting: proc=$proc port8080=$listening err=$errMsg"
     Start-Sleep -Seconds 5
   }
 }
