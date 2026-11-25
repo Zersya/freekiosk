@@ -104,18 +104,8 @@ while ((Get-Date) -lt $deadline) {
   }
 }
 if (-not $healthy) {
-  $dbg = Join-Path $env:LOCALAPPDATA "Packages\$pfn\LocalState\freekiosk_debug.log"
-  if (Test-Path $dbg) { Write-Host '--- freekiosk_debug.log ---'; Get-Content $dbg | ForEach-Object { Write-Host $_ } } else { Write-Host 'no freekiosk_debug.log' }
   $stor = Join-Path $env:LOCALAPPDATA "Packages\$pfn\LocalState\freekiosk_storage.json"
   if (Test-Path $stor) { Write-Host '--- storage ---'; Write-Host (Get-Content $stor -Raw) }
-  $boot = Join-Path $env:LOCALAPPDATA "Packages\$pfn\LocalState\freekiosk_boot.log"
-  if (Test-Path $boot) { Write-Host '--- freekiosk_boot.log ---'; Write-Host (Get-Content $boot -Raw) } else { Write-Host 'no freekiosk_boot.log' }
-  $wm = Join-Path $env:LOCALAPPDATA "Packages\$pfn\LocalState\freekiosk_winmain.log"
-  if (Test-Path $wm) { Write-Host '--- freekiosk_winmain.log ---'; Write-Host (Get-Content $wm -Raw) } else { Write-Host 'no freekiosk_winmain.log' }
-  $st = Join-Path $env:LOCALAPPDATA "Packages\$pfn\LocalState\freekiosk_started.log"
-  if (Test-Path $st) { Write-Host '--- freekiosk_started.log ---'; Write-Host (Get-Content $st -Raw) } else { Write-Host 'no freekiosk_started.log' }
-  $mi = Join-Path $env:LOCALAPPDATA "Packages\$pfn\LocalState\freekiosk_moduleinit.log"
-  if (Test-Path $mi) { Write-Host '--- freekiosk_moduleinit.log ---'; Write-Host (Get-Content $mi -Raw) } else { Write-Host 'no freekiosk_moduleinit.log' }
   Write-Host '--- LocalState ---'; Get-ChildItem (Join-Path $env:LOCALAPPDATA "Packages\$pfn\LocalState") | ForEach-Object { Write-Host $_.Name }
   Fail '/api/health did not respond within 120s'
 }

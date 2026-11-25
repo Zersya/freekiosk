@@ -17,6 +17,19 @@ const WINDOWS_SHIMS = {
     'src/platform/windows/shims/asyncStorage.tsx',
 };
 
+// IMPORTANT: `loadMetroConfig` (community CLI) installs a framework-default
+// `resolveRequest` — `reactNativePlatformResolver` — that maps
+// `react-native`/`react-native/*` to the out-of-tree platform package
+// (react-native-windows for platform=windows). A project-level
+// `resolveRequest` *replaces* that default instead of chaining it, which left
+// `react-native` resolving to the core package: core `Platform.js` re-exports
+// itself for out-of-tree platforms, making `Platform.default` undefined and
+// crashing bundle eval with "Cannot read property 'OS' of undefined".
+// Capture it via getDefaultConfig() (which already merged framework defaults)
+// and delegate to it so `react-native` → `react-native-windows` still works.
+const upstreamResolveRequest = getDefaultConfig(__dirname).resolver
+  .resolveRequest;
+
 function resolveRequest(context, moduleName, platform) {
   if (platform === 'windows') {
     if (
@@ -33,8 +46,12 @@ function resolveRequest(context, moduleName, platform) {
       };
     }
   }
+  if (upstreamResolveRequest) {
+    return upstreamResolveRequest(context, moduleName, platform);
+  }
   return context.resolveRequest(context, moduleName, platform);
 }
+
 
 const fs = require('fs');
 const path = require('node:path');

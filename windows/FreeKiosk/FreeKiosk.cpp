@@ -20,8 +20,6 @@
 #include "modules/HttpServerModule.h"
 #include "modules/Win32Util.h"
 #include "modules/Base64.h"
-#include <fstream>
-#include <filesystem>
 #include "modules/ScreenCapture.h"
 #include "modules/PackageInstallModule.h"
 
@@ -48,21 +46,9 @@ _Use_decl_annotations_ int CALLBACK WinMain(HINSTANCE instance, HINSTANCE, PSTR 
   PathCchRemoveFileSpec(appDirectory, MAX_PATH);
 
 
-  // TEMP diagnostic: prove WinMain ran / stage markers
-  auto mark = [](const char *stage) {
-    try {
-      std::ofstream f(std::filesystem::path(
-          winrt::Windows::Storage::ApplicationData::Current().LocalFolder().Path().c_str()) / "freekiosk_winmain.log",
-          std::ios::app);
-      f << stage << std::endl;
-    } catch (...) {
-    }
-  };
-  mark("WinMain entered");
-
   // Create a ReactNativeWin32App with the ReactNativeAppBuilder
   auto reactNativeWin32App{winrt::Microsoft::ReactNative::ReactNativeAppBuilder().Build()};
-  mark("host built");
+
 
   // Configure the initial InstanceSettings for the app's ReactNativeHost
   auto settings{reactNativeWin32App.ReactNativeHost().InstanceSettings()};
@@ -70,21 +56,6 @@ _Use_decl_annotations_ int CALLBACK WinMain(HINSTANCE instance, HINSTANCE, PSTR 
   RegisterAutolinkedNativeModulePackages(settings.PackageProviders());
   // Register any native modules defined within this app project
   settings.PackageProviders().Append(winrt::make<CompReactPackageProvider>());
-  mark("providers appended");
-
-  settings.InstanceCreated([mark](auto &&, auto &&) { mark("InstanceCreated"); });
-  settings.InstanceLoaded([mark](auto &&, auto &&args) {
-    mark(args.Failed() ? "InstanceLoaded FAILED" : "InstanceLoaded OK");
-  });
-
-  settings.NativeLogger(
-      winrt::Microsoft::ReactNative::LogHandler{
-          [mark](winrt::Microsoft::ReactNative::LogLevel level, winrt::hstring const &message) {
-            std::wstring ws(message.c_str());
-            std::string utf8(ws.begin(), ws.end());
-            std::string line = "JS[" + std::to_string(static_cast<int>(level)) + "] " + utf8;
-            mark(line.c_str());
-          }});
 
 #if BUNDLE
   // Load the JS bundle from a file (not Metro):
@@ -116,34 +87,13 @@ _Use_decl_annotations_ int CALLBACK WinMain(HINSTANCE instance, HINSTANCE, PSTR 
 
   // Get the AppWindow so we can configure its initial title and size
   auto appWindow{reactNativeWin32App.AppWindow()};
-  mark("AppWindow got");
   appWindow.Title(L"FreeKiosk");
   appWindow.Resize({1000, 1000});
-  mark("AppWindow resized");
 
   // Get the ReactViewOptions so we can set the initial RN component to load
   auto viewOptions{reactNativeWin32App.ReactViewOptions()};
   viewOptions.ComponentName(L"FreeKiosk");
-  mark("view options set, calling Start()");
-
-  // TEMP diagnostic: start the JS instance before Start(), in case
-  // AppWindow.Show() blocks on a non-interactive session.
-  reactNativeWin32App.ReactNativeHost().InstanceSettings().Properties().Set(
-      winrt::Microsoft::ReactNative::ReactDispatcherHelper::UIDispatcherProperty(),
-      winrt::Microsoft::ReactNative::ReactDispatcherHelper::UIThreadDispatcher());
-  reactNativeWin32App.ReactNativeHost().ReloadInstance();
-  mark("ReloadInstance() returned");
-
-  reactNativeWin32App.AppWindow().Show();
-  mark("AppWindow.Show() returned");
 
   // Start the app
   reactNativeWin32App.Start();
-
-  {
-    std::ofstream doneFile(std::filesystem::path(
-        winrt::Windows::Storage::ApplicationData::Current().LocalFolder().Path().c_str()) / "freekiosk_started.log",
-        std::ios::app);
-    doneFile << "Start() returned" << std::endl;
-  }
 }

@@ -4,8 +4,6 @@
 #include "ScreenCapture.h"
 
 #include <chrono>
-#include <fstream>
-#include <filesystem>
 
 namespace winrt::FreeKiosk::implementation {
 
@@ -13,13 +11,6 @@ using namespace winrt::Microsoft::ReactNative;
 
 void TcpSocketModule::Initialize(winrt::Microsoft::ReactNative::ReactContext const &reactContext) noexcept {
   m_reactContext = reactContext;
-  try {
-    std::ofstream f(std::filesystem::path(
-        winrt::Windows::Storage::ApplicationData::Current().LocalFolder().Path().c_str()) / "freekiosk_moduleinit.log",
-        std::ios::app);
-    f << "TcpSocketModule::Initialize" << std::endl;
-  } catch (...) {
-  }
   InitializeWinsock();
 }
 
