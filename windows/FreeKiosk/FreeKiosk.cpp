@@ -77,6 +77,15 @@ _Use_decl_annotations_ int CALLBACK WinMain(HINSTANCE instance, HINSTANCE, PSTR 
     mark(args.Failed() ? "InstanceLoaded FAILED" : "InstanceLoaded OK");
   });
 
+  settings.NativeLogger(
+      winrt::Microsoft::ReactNative::LogHandler{
+          [mark](winrt::Microsoft::ReactNative::LogLevel level, winrt::hstring const &message) {
+            std::wstring ws(message.c_str());
+            std::string utf8(ws.begin(), ws.end());
+            std::string line = "JS[" + std::to_string(static_cast<int>(level)) + "] " + utf8;
+            mark(line.c_str());
+          }});
+
 #if BUNDLE
   // Load the JS bundle from a file (not Metro):
   // Set the path (on disk) where the .bundle file is located
