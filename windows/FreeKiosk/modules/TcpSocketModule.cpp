@@ -68,10 +68,9 @@ void TcpSocketModule::Cleanup() noexcept {
 
 void TcpSocketModule::Emit(std::wstring_view name, JSValueObject &&payload) noexcept {
   TcpTrace("emit " + std::string(name.begin(), name.end()));
-  m_reactContext.JSDispatcher().Post([ctx = m_reactContext, name = std::wstring(name),
-                                      p = std::make_shared<JSValueObject>(std::move(payload))]() {
-    ctx.EmitJSEvent(L"RCTDeviceEventEmitter", name, JSValue(std::move(*p)));
-  });
+  // EmitJSEvent marshals to the JS thread internally — same pattern as
+  // RNW's Microsoft::React::Modules::SendEvent; no explicit dispatcher post.
+  m_reactContext.EmitJSEvent(L"RCTDeviceEventEmitter", std::move(name), std::move(payload));
 }
 
 void TcpSocketModule::EmitSocketError(int socketId, std::string const &message) noexcept {
