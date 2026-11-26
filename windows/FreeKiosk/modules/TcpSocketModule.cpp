@@ -4,21 +4,6 @@
 #include "ScreenCapture.h"
 
 #include <chrono>
-#include <fstream>
-#include <filesystem>
-
-namespace {
-// TEMP diagnostic: trace socket event flow to LocalState.
-void TcpTrace(std::string const &msg) {
-  try {
-    std::ofstream f(std::filesystem::path(
-        winrt::Windows::Storage::ApplicationData::Current().LocalFolder().Path().c_str()) / "freekiosk_tcp.log",
-        std::ios::app);
-    f << msg << std::endl;
-  } catch (...) {
-  }
-}
-}
 
 namespace winrt::FreeKiosk::implementation {
 
@@ -67,7 +52,6 @@ void TcpSocketModule::Cleanup() noexcept {
 }
 
 void TcpSocketModule::Emit(std::wstring_view name, JSValueObject &&payload) noexcept {
-  TcpTrace("emit " + std::string(name.begin(), name.end()));
   // EmitJSEvent marshals to the JS thread internally — same pattern as
   // RNW's Microsoft::React::Modules::SendEvent; no explicit dispatcher post.
   m_reactContext.EmitJSEvent(L"RCTDeviceEventEmitter", std::move(name), std::move(payload));
@@ -229,11 +213,9 @@ void TcpSocketModule::send(int socketId, std::string base64, winrt::Microsoft::R
   }
 
   if (!bytes.empty() && !SendAll(*state, bytes.data(), bytes.size())) {
-    TcpTrace("send FAIL socketId=" + std::to_string(socketId));
     promise.Reject("Failed to send data");
     return;
   }
-  TcpTrace("send ok socketId=" + std::to_string(socketId));
 
   promise.Resolve();
 }
@@ -355,7 +337,6 @@ void TcpSocketModule::HandleClientConnection(SOCKET clientSocket, sockaddr_in cl
   payload["remoteAddress"] = std::string(ipStr);
   payload["remotePort"] = remotePort;
   Emit(L"tcpConnection", std::move(payload));
-  TcpTrace("conn socketId=" + std::to_string(socketId));
   std::thread([this, socketId]() {
     this->ReadSocketData(socketId);
   }).detach();
@@ -377,7 +358,6 @@ void TcpSocketModule::ReadSocketData(int socketId) noexcept {
     int bytesRead = recv(state->socket, buffer, sizeof(buffer), 0);
 
     if (bytesRead > 0) {
-      TcpTrace("data socketId=" + std::to_string(socketId) + " bytes=" + std::to_string(bytesRead));
       std::string data = ::FreeKiosk::Base64::Encode(reinterpret_cast<uint8_t const *>(buffer), bytesRead);
       JSValueObject payload;
       payload["socketId"] = socketId;

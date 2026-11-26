@@ -80,38 +80,19 @@ const socketHandlers = new Map<
   { onData?: TcpDataCallback; onError?: TcpErrorCallback; onClose?: TcpCloseCallback }
 >();
 
-
-// TEMP diagnostic: trace JS-side event delivery to LocalState.
-function jsTrace(msg: string): void {
-  try {
-    const km = NativeModules.KioskModule;
-    if (km?.writeFile) {
-      km.readFile('freekiosk_js.log')
-        .then((prev: string) => km.writeFile('freekiosk_js.log', prev + msg + '\n'))
-        .catch(() => km.writeFile('freekiosk_js.log', msg + '\n'));
-    }
-  } catch {}
-}
 let listenersRegistered = false;
 
 function ensureListeners(): void {
   if (listenersRegistered) return;
   listenersRegistered = true;
-  jsTrace('ensureListeners registered');
 
   DeviceEventEmitter.addListener('tcpConnection', (event: TcpConnectionEvent) => {
-    jsTrace(`tcpConnection s=${event.socketId} srv=${event.serverId} found=${serversById.has(event.serverId)}`);
     serversById.get(event.serverId)?.handleConnectionEvent(event);
   });
 
   DeviceEventEmitter.addListener('tcpData', (event: TcpDataEvent) => {
     const h = socketHandlers.get(event.socketId);
-    jsTrace(`tcpData s=${event.socketId} hasHandler=${!!h?.onData}`);
-    try {
-      h?.onData?.(bytesToBinaryString(base64Decode(event.data)));
-    } catch (e) {
-      jsTrace(`onData threw: ${(e as Error).message}`);
-    }
+    h?.onData?.(bytesToBinaryString(base64Decode(event.data)));
   });
 
   DeviceEventEmitter.addListener('tcpError', (event: TcpErrorEvent) => {
@@ -127,7 +108,6 @@ function ensureListeners(): void {
 }
 
 function sendBinary(socketId: number, binary: string): Promise<void> {
-  jsTrace(`sendBinary s=${socketId} len=${binary.length} hasModule=${!!TcpSocketModule}`);
   return TcpSocketModule.send(socketId, base64Encode(binaryStringToBytes(binary)));
 }
 

@@ -108,9 +108,9 @@ if (-not $healthy) {
   $stor = Join-Path $env:LOCALAPPDATA "Packages\$pfn\LocalState\freekiosk_storage.json"
   if (Test-Path $stor) { Write-Host '--- storage ---'; Write-Host (Get-Content $stor -Raw) }
   $tcplog = Join-Path $env:LOCALAPPDATA "Packages\$pfn\LocalState\freekiosk_tcp.log"
-  if (Test-Path $tcplog) { Write-Host '--- freekiosk_tcp.log ---'; Get-Content $tcplog | ForEach-Object { Write-Host $_ } } else { Write-Host 'no freekiosk_tcp.log' }
+  if (Test-Path $tcplog) { Write-Host '--- freekiosk_tcp.log ---'; Get-Content $tcplog | ForEach-Object { Write-Host $_ } }
   $jslog = Join-Path $env:LOCALAPPDATA "Packages\$pfn\LocalState\freekiosk_js.log"
-  if (Test-Path $jslog) { Write-Host '--- freekiosk_js.log ---'; Get-Content $jslog | ForEach-Object { Write-Host $_ } } else { Write-Host 'no freekiosk_js.log' }
+  if (Test-Path $jslog) { Write-Host '--- freekiosk_js.log ---'; Get-Content $jslog | ForEach-Object { Write-Host $_ } }
   Write-Host '--- LocalState ---'; Get-ChildItem (Join-Path $env:LOCALAPPDATA "Packages\$pfn\LocalState") | ForEach-Object { Write-Host $_.Name }
   Fail '/api/health did not respond within 120s'
 }
